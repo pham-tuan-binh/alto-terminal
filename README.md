@@ -9,6 +9,7 @@ A Python audio client that streams audio to and from LiveKit without using the a
 - Support for custom audio devices
 - Adjustable volume control
 - Mute/unmute functionality
+- **Terminal UI (TUI) visualization** with conversation transcripts and real-time audio levels
 - No dependency on the LiveKit agents framework - uses only the client SDK
 
 ## Installation
@@ -75,6 +76,21 @@ Disable audio playback (capture only):
 python main.py --no-playback
 ```
 
+### Terminal UI Mode
+
+Enable the Terminal User Interface for visual feedback:
+
+```bash
+python main.py --room-name my-room --identity my-username --tui
+```
+
+The TUI provides:
+- **Top panel**: Conversation transcripts showing messages from all participants
+- **Bottom-left panel**: Your microphone audio visualization (VU meter and waveform) - **real-time from your mic**
+- **Bottom-right panel**: Agent/remote participant audio visualization - **real-time from remote audio**
+
+**Note**: The TUI currently supports transcription display when connected to LiveKit rooms with transcription enabled (e.g., when using LiveKit Agents that publish transcriptions to the `lk.transcription` data topic).
+
 ## Command-Line Options
 
 ```
@@ -90,6 +106,7 @@ python main.py --no-playback
 --api-secret SECRET        LiveKit API secret
 --room-name NAME           LiveKit room name (default: audio-room)
 --identity NAME            Participant identity (default: python-audio-streamer)
+--tui                      Enable terminal UI with visualization
 -v, --verbose              Enable verbose logging
 ```
 
@@ -103,12 +120,63 @@ The client uses the LiveKit Python client SDK (`livekit-rtc`) to:
 4. **Subscribe to remote audio tracks** from other participants
 5. **Mix and play back** received audio through your speakers
 
-### Architecture
+## Architecture
 
-- `LiveKitAudioClient`: Main class managing the LiveKit connection and audio streams
-- `AudioMixer`: Mixes multiple remote audio streams for playback
-- `sounddevice`: Handles microphone capture and speaker playback
-- Callbacks bridge the synchronous audio callbacks with async LiveKit APIs
+Alto Terminal is built with a modular, well-tested architecture consisting of five key components:
+
+```
+AudioClientOrchestrator
+    ├─> AudioMixer (buffer management & mixing)
+    ├─> LiveKitNetworkManager (room & track management)
+    ├─> AudioInputHandler (microphone capture)
+    └─> AudioOutputHandler (speaker playback)
+```
+
+### Component Overview
+
+- **AudioMixer**: Thread-safe audio buffer management with per-stream volume control and lazy mixing
+- **AudioInputHandler**: Captures microphone audio and bridges OS audio thread → async event loop
+- **AudioOutputHandler**: Pulls mixed audio from mixer and plays through speakers
+- **LiveKitNetworkManager**: Manages LiveKit room connection, track publishing, and remote audio processing
+- **AudioClientOrchestrator**: Coordinates component lifecycle and provides unified API
+
+### Key Features
+
+- **Separation of Concerns**: Each component has a single, well-defined responsibility
+- **Thread Safety**: Proper synchronization between OS audio threads and async event loop
+- **Per-Participant Mixing**: Individual volume control and metrics for each remote participant
+- **Graceful Degradation**: Handles buffer underruns and network issues without crashing
+- **Comprehensive Testing**: 103 tests (99 unit + 4 integration) with >80% coverage
+
+### Understanding the Code
+
+For a deep dive into the architecture, see:
+
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Component diagrams, data flows, threading model
+- **[DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)** - Why things are built this way
+- **[TUTORIAL.md](docs/TUTORIAL.md)** - Step-by-step walkthrough of audio flow
+
+### Project Structure
+
+```
+alto-terminal/
+├── src/alto_terminal/          # Main package
+│   ├── config.py               # Audio configuration
+│   ├── audio_mixer.py          # Buffer management & mixing
+│   ├── audio_input_handler.py  # Microphone capture
+│   ├── audio_output_handler.py # Speaker playback
+│   ├── livekit_network_manager.py # LiveKit room management
+│   ├── audio_client_orchestrator.py # Component coordination
+│   └── utils.py                # Device listing utilities
+├── tests/                      # Comprehensive test suite
+│   ├── unit/                   # 99 unit tests
+│   └── integration/            # 4 integration tests
+├── docs/                       # Architecture documentation
+│   ├── ARCHITECTURE.md
+│   ├── DESIGN_DECISIONS.md
+│   └── TUTORIAL.md
+└── main.py                     # CLI entry point
+```
 
 ## Example: Two Clients
 

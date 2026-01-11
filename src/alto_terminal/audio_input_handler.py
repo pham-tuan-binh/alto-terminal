@@ -16,7 +16,7 @@ import numpy as np
 import sounddevice as sd
 from livekit import rtc
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,8 @@ class AudioInputHandler:
         sample_rate: int,
         num_channels: int,
         samples_per_channel: int,
-        device_index: Optional[int] = None
+        device_index: Optional[int] = None,
+        on_audio_captured: Optional[Callable[[np.ndarray], None]] = None
     ):
         """Initialize audio input handler.
 
@@ -78,6 +79,8 @@ class AudioInputHandler:
             num_channels: Number of audio channels (typically 1 for mono)
             samples_per_channel: Number of samples per audio frame (e.g., 2400 for 50ms)
             device_index: Optional device index (None = default device)
+            on_audio_captured: Optional callback for captured audio data (for visualization)
+                               Called with int16 audio data from OS audio thread
         """
         self.audio_source = audio_source
         self.event_loop = event_loop
@@ -85,6 +88,7 @@ class AudioInputHandler:
         self.num_channels = num_channels
         self.samples_per_channel = samples_per_channel
         self.device_index = device_index
+        self._on_audio_captured = on_audio_captured
 
         # Input stream (created when started)
         self._input_stream: Optional[sd.InputStream] = None
@@ -186,6 +190,15 @@ class AudioInputHandler:
             # LiveKit expects int16 with range [-32768, 32767]
             # Multiply by 32767 (not 32768) to avoid overflow at -1.0
             audio_data = (indata[:, 0] * 32767).astype(np.int16)
+
+            # Notify visualization callback if provided (e.g., for TUI)
+            # This runs in OS audio thread, so callback must be thread-safe
+            if self._on_audio_captured:
+                try:
+                    self._on_audio_captured(audio_data)
+                except Exception as e:
+                    # Don't let visualization errors crash audio capture
+                    logger.debug(f"Error in audio capture callback: {e}")
 
             # Create LiveKit AudioFrame
             frame = rtc.AudioFrame(
