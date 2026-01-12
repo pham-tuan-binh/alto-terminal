@@ -38,10 +38,11 @@ class TUIManager:
         # Thread-safe storage for transcripts
         self._transcript_lock = threading.Lock()
         self._transcripts: deque = deque(maxlen=max_transcript_lines)
+        self._last_speaker: Optional[str] = None
 
         # Thread-safe storage for audio levels
         self._audio_lock = threading.Lock()
-        self._user_audio_levels: deque = deque(maxlen=max_audio_history)
+        self._user_audio_levels: deque = deque(maxlen=self.max_audio_history)
         self._agent_audio_levels: Dict[str, deque] = {}  # Per-participant levels
 
         # Live display
@@ -49,18 +50,26 @@ class TUIManager:
         self._layout: Optional[Layout] = None
         self._running = False
 
-    def add_transcript(self, speaker: str, message: str, is_final: bool = True):
+    def add_transcript(self, speaker: str, message: str):
         """Add a transcript message to the conversation panel.
 
         Args:
             speaker: Name of the speaker (e.g., "User", "Agent", participant identity)
             message: The transcribed text
-            is_final: Whether this is a final or interim transcript
         """
         with self._transcript_lock:
             timestamp = datetime.now().strftime("%H:%M:%S")
-            prefix = "" if is_final else "[dim](partial)[/dim] "
-            self._transcripts.append((timestamp, speaker, prefix + message, is_final))
+
+            # Check if we should merge with the previous message
+            if self._last_speaker == speaker and self._transcripts:
+                prev_timestamp, prev_speaker, prev_message = self._transcripts.pop()
+                merged_message = prev_message + message
+                self._transcripts.append((prev_timestamp, speaker, merged_message))
+            else:
+                # New speaker or first message
+                self._transcripts.append((timestamp, speaker, message))
+
+            self._last_speaker = speaker
 
     def update_user_audio_level(self, audio_data: np.ndarray):
         """Update user audio visualization with new audio data.
@@ -79,7 +88,9 @@ class TUIManager:
         with self._audio_lock:
             self._user_audio_levels.append(level)
 
-    def update_agent_audio_level(self, audio_data: np.ndarray, stream_id: str = "agent"):
+    def update_agent_audio_level(
+        self, audio_data: np.ndarray, stream_id: str = "agent"
+    ):
         """Update agent audio visualization with new audio data.
 
         Args:
@@ -95,7 +106,9 @@ class TUIManager:
 
         with self._audio_lock:
             if stream_id not in self._agent_audio_levels:
-                self._agent_audio_levels[stream_id] = deque(maxlen=self.max_audio_history)
+                self._agent_audio_levels[stream_id] = deque(
+                    maxlen=self.max_audio_history
+                )
             self._agent_audio_levels[stream_id].append(level)
 
     def _create_layout(self) -> Layout:
@@ -104,14 +117,12 @@ class TUIManager:
 
         # Split into top (2/3) and bottom (1/3)
         layout.split_column(
-            Layout(name="transcript", ratio=2),
-            Layout(name="audio_viz", ratio=1)
+            Layout(name="transcript", ratio=2), Layout(name="audio_viz", ratio=1)
         )
 
         # Split bottom into left (user) and right (agent)
         layout["audio_viz"].split_row(
-            Layout(name="user_audio"),
-            Layout(name="agent_audio")
+            Layout(name="user_audio"), Layout(name="agent_audio")
         )
 
         return layout
@@ -123,7 +134,7 @@ class TUIManager:
                 content = Text("Waiting for conversation...", style="dim")
             else:
                 lines = []
-                for timestamp, speaker, message, is_final in self._transcripts:
+                for timestamp, speaker, message in self._transcripts:
                     # Color code by speaker
                     if speaker.lower() in ["user", "you"]:
                         speaker_color = "cyan"
@@ -139,10 +150,7 @@ class TUIManager:
                 content = Text("\n").join(lines)
 
         return Panel(
-            content,
-            title="[bold]Conversation",
-            border_style="blue",
-            padding=(1, 2)
+            content, title="[bold]Conversation", border_style="blue", padding=(1, 2)
         )
 
     def _render_audio_bar(self, levels: List[float], max_width: int = 40) -> str:
@@ -175,7 +183,9 @@ class TUIManager:
 
         return f"[{style}]{bar}[/{style}]"
 
-    def _render_audio_waveform(self, levels: List[float], max_width: int = 40, max_height: int = 8) -> str:
+    def _render_audio_waveform(
+        self, levels: List[float], max_width: int = 40, max_height: int = 8
+    ) -> str:
         """Render a simple waveform visualization.
 
         Args:
@@ -236,7 +246,7 @@ class TUIManager:
             Text("\n\n"),
             Text.from_markup(vu_meter),
             Text("\n\n"),
-            Text.from_markup(waveform)
+            Text.from_markup(waveform),
         ]
 
         content = Text()
@@ -244,10 +254,7 @@ class TUIManager:
             content.append(part)
 
         return Panel(
-            content,
-            title="[bold cyan]User Audio",
-            border_style="cyan",
-            padding=(1, 1)
+            content, title="[bold cyan]User Audio", border_style="cyan", padding=(1, 1)
         )
 
     def _render_agent_audio_panel(self) -> Panel:
@@ -260,7 +267,7 @@ class TUIManager:
 
             if all_levels:
                 # Use the most recent levels
-                recent_levels = all_levels[-self.max_audio_history:]
+                recent_levels = all_levels[-self.max_audio_history :]
             else:
                 recent_levels = []
 
@@ -274,7 +281,9 @@ class TUIManager:
         vu_meter = self._render_audio_bar(recent_levels, max_width=30)
 
         # Waveform
-        waveform = self._render_audio_waveform(recent_levels, max_width=35, max_height=6)
+        waveform = self._render_audio_waveform(
+            recent_levels, max_width=35, max_height=6
+        )
 
         # Show active streams
         with self._audio_lock:
@@ -291,7 +300,7 @@ class TUIManager:
             Text("\n\n"),
             Text.from_markup(waveform),
             Text("\n\n"),
-            streams_text
+            streams_text,
         ]
 
         content = Text()
@@ -302,7 +311,7 @@ class TUIManager:
             content,
             title="[bold green]Agent Audio",
             border_style="green",
-            padding=(1, 1)
+            padding=(1, 1),
         )
 
     def _render(self) -> Layout:
@@ -334,7 +343,7 @@ class TUIManager:
             self._render(),
             console=self.console,
             screen=True,
-            refresh_per_second=refresh_per_second
+            refresh_per_second=refresh_per_second,
         )
         self._live.start()
 

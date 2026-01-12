@@ -21,6 +21,9 @@ from typing import Optional, Callable, Dict
 
 logger = logging.getLogger(__name__)
 
+# Store active text stream tasks to prevent garbage collection
+_active_text_tasks = set()
+
 
 @dataclass
 class NetworkMetrics:
@@ -33,6 +36,7 @@ class NetworkMetrics:
         tracks_subscribed: Number of remote tracks subscribed
         frames_received: Total frames received from remote participants
     """
+
     is_connected: bool = False
     room_name: Optional[str] = None
     participant_count: int = 0
@@ -83,7 +87,7 @@ class LiveKitNetworkManager:
         on_track_subscribed: Optional[Callable] = None,
         on_track_unsubscribed: Optional[Callable] = None,
         on_transcription: Optional[Callable] = None,
-        on_audio_data: Optional[Callable] = None
+        on_audio_data: Optional[Callable] = None,
     ):
         """Initialize LiveKit network manager.
 
@@ -157,13 +161,14 @@ class LiveKitNetworkManager:
             self.room.on("participant_disconnected", self._on_participant_disconnected)
             self.room.on("track_subscribed", self._on_track_subscribed)
             self.room.on("track_unsubscribed", self._on_track_unsubscribed)
-            self.room.on("data_received", self._on_data_received)
+            # Register text stream handler for transcriptions
+            self.room.register_text_stream_handler(
+                "lk.transcription", self._handle_text_stream
+            )
 
             # Connect with auto-subscribe
             await self.room.connect(
-                self.url,
-                self.token,
-                options=RoomOptions(auto_subscribe=True)
+                self.url, self.token, options=RoomOptions(auto_subscribe=True)
             )
 
             # Update metrics
@@ -242,15 +247,12 @@ class LiveKitNetworkManager:
             # Create audio source with buffering
             # queue_size_ms: Buffer size for handling jitter
             self.audio_source = rtc.AudioSource(
-                self.sample_rate,
-                self.num_channels,
-                queue_size_ms=200
+                self.sample_rate, self.num_channels, queue_size_ms=200
             )
 
             # Create local audio track
             track = rtc.LocalAudioTrack.create_audio_track(
-                "microphone",
-                self.audio_source
+                "microphone", self.audio_source
             )
 
             # Publish to room
@@ -310,7 +312,7 @@ class LiveKitNetworkManager:
         self,
         track: rtc.Track,
         publication: rtc.RemoteTrackPublication,
-        participant: rtc.RemoteParticipant
+        participant: rtc.RemoteParticipant,
     ):
         """Handle track subscribed event.
 
@@ -320,8 +322,7 @@ class LiveKitNetworkManager:
             participant: Remote participant who published the track
         """
         logger.info(
-            f"Track subscribed from {participant.identity}: "
-            f"{track.name} ({track.kind})"
+            f"Track subscribed from {participant.identity}: {track.name} ({track.kind})"
         )
 
         # Update metrics
@@ -346,7 +347,7 @@ class LiveKitNetworkManager:
         self,
         track: rtc.Track,
         publication: rtc.RemoteTrackPublication,
-        participant: rtc.RemoteParticipant
+        participant: rtc.RemoteParticipant,
     ):
         """Handle track unsubscribed event.
 
@@ -376,48 +377,69 @@ class LiveKitNetworkManager:
         if self._on_track_unsubscribed_cb:
             self._on_track_unsubscribed_cb(track, publication, participant)
 
-    def _on_data_received(self, data_packet: rtc.DataPacket):
-        """Handle data messages (including transcriptions).
+    async def _async_handle_text_stream(
+        self, reader: rtc.TextStreamReader, participant_identity: str
+    ):
+        """Handle text stream from a participant (e.g., transcriptions).
 
         Args:
-            data_packet: Data packet received from participant
+            reader: Text stream reader
+            participant_identity: Identity of the participant sending the stream
         """
-        # Check if this is a transcription message
-        # LiveKit transcription messages use the topic "lk.transcription"
-        if hasattr(data_packet, 'topic') and data_packet.topic == "lk.transcription":
-            try:
-                # Decode the transcription text
-                text = data_packet.data.decode('utf-8')
+        info = reader.info
 
-                # Get participant info
-                participant_identity = (
-                    data_packet.participant.identity
-                    if data_packet.participant
-                    else "Unknown"
-                )
+        logger.debug(
+            f"Text stream received from {participant_identity}\n"
+            f"  Topic: {info.topic}\n"
+            f"  Timestamp: {info.timestamp}\n"
+            f"  Size: {getattr(info, 'size', 'unknown')}"
+        )
 
-                # Check if this is a final or interim transcript
-                # LiveKit includes metadata in data packet attributes
-                is_final = True  # Default to final
-                if hasattr(data_packet, 'attributes'):
-                    is_final = data_packet.attributes.get('lk.transcription_final', 'true') == 'true'
+        try:
+            # Process the stream incrementally using async for loop
+            async for chunk in reader:
+                # For transcription streams, each chunk is a transcript
+                if info.topic == "lk.transcription":
+                    # Determine if this is final or interim based on chunk content
+                    # LiveKit typically sends interim results followed by final ones
+                    is_final = not chunk.endswith("...")  # Simple heuristic
 
-                logger.debug(
-                    f"Transcription from {participant_identity}: "
-                    f"'{text}' (final={is_final})"
-                )
+                    logger.debug(
+                        f"Transcription chunk from {participant_identity}: "
+                        f"'{chunk}' (final={is_final})"
+                    )
 
-                # Call transcription callback if provided
-                if self._on_transcription_cb:
-                    self._on_transcription_cb(participant_identity, text, is_final)
+                    # Call transcription callback if provided
+                    if self._on_transcription_cb:
+                        self._on_transcription_cb(participant_identity, chunk, is_final)
+                else:
+                    # Handle other text stream topics
+                    logger.info(
+                        f"Text stream from {participant_identity} ({info.topic}): {chunk}"
+                    )
 
-            except Exception as e:
-                logger.error(f"Error processing transcription data: {e}")
+        except Exception as e:
+            logger.error(
+                f"Error processing text stream from {participant_identity}: {e}"
+            )
+
+    def _handle_text_stream(
+        self, reader: rtc.TextStreamReader, participant_identity: str
+    ):
+        """Create async task for handling text stream.
+
+        Args:
+            reader: Text stream reader
+            participant_identity: Identity of the participant sending the stream
+        """
+        task = asyncio.create_task(
+            self._async_handle_text_stream(reader, participant_identity)
+        )
+        _active_text_tasks.add(task)
+        task.add_done_callback(lambda t: _active_text_tasks.remove(t))
 
     async def _handle_remote_audio_track(
-        self,
-        track: rtc.RemoteAudioTrack,
-        participant_identity: str
+        self, track: rtc.RemoteAudioTrack, participant_identity: str
     ):
         """Process audio frames from a remote participant.
 
@@ -435,9 +457,7 @@ class LiveKitNetworkManager:
         try:
             # Create audio stream from track
             stream = rtc.AudioStream(
-                track,
-                sample_rate=self.sample_rate,
-                num_channels=self.num_channels
+                track, sample_rate=self.sample_rate, num_channels=self.num_channels
             )
 
             # Process frames as they arrive
@@ -450,14 +470,13 @@ class LiveKitNetworkManager:
                 # Route to mixer (thread-safe, synchronous)
                 if not self.no_playback:
                     self.mixer.add_audio_data(
-                        audio_data,
-                        stream_id=participant_identity
+                        audio_data, stream_id=participant_identity
                     )
 
                 # Notify transcription callback with audio data for visualization
                 # (reusing transcription callback mechanism for simplicity)
                 # In a production system, you'd have a separate audio_data callback
-                if hasattr(self, '_on_audio_data_cb') and self._on_audio_data_cb:
+                if hasattr(self, "_on_audio_data_cb") and self._on_audio_data_cb:
                     self._on_audio_data_cb(participant_identity, audio_data)
 
                 # Update metrics
@@ -469,9 +488,7 @@ class LiveKitNetworkManager:
                     f"{frame.sample_rate} Hz"
                 )
 
-            logger.info(
-                f"Audio stream ended for participant: {participant_identity}"
-            )
+            logger.info(f"Audio stream ended for participant: {participant_identity}")
 
         except asyncio.CancelledError:
             logger.info(
@@ -479,9 +496,7 @@ class LiveKitNetworkManager:
             )
             raise
         except Exception as e:
-            logger.error(
-                f"Error processing audio from {participant_identity}: {e}"
-            )
+            logger.error(f"Error processing audio from {participant_identity}: {e}")
 
     def get_metrics(self) -> dict:
         """Get metrics for monitoring.
@@ -496,10 +511,10 @@ class LiveKitNetworkManager:
                 - active_audio_tasks: Number of active remote audio tasks
         """
         return {
-            'is_connected': self._metrics.is_connected,
-            'room_name': self._metrics.room_name,
-            'participant_count': self._metrics.participant_count,
-            'tracks_subscribed': self._metrics.tracks_subscribed,
-            'frames_received': self._metrics.frames_received,
-            'active_audio_tasks': len(self._remote_audio_tasks)
+            "is_connected": self._metrics.is_connected,
+            "room_name": self._metrics.room_name,
+            "participant_count": self._metrics.participant_count,
+            "tracks_subscribed": self._metrics.tracks_subscribed,
+            "frames_received": self._metrics.frames_received,
+            "active_audio_tasks": len(self._remote_audio_tasks),
         }

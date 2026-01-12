@@ -38,6 +38,7 @@ class OrchestratorMetrics:
         output_metrics: Metrics from AudioOutputHandler
         network_metrics: Metrics from LiveKitNetworkManager
     """
+
     is_connected: bool = False
     mixer_metrics: dict = None
     input_metrics: dict = None
@@ -76,11 +77,7 @@ class AudioClientOrchestrator:
     """
 
     def __init__(
-        self,
-        url: str,
-        token: str,
-        config: AudioConfig,
-        enable_tui: bool = False
+        self, url: str, token: str, config: AudioConfig, enable_tui: bool = False
     ):
         """Initialize orchestrator.
 
@@ -139,22 +136,24 @@ class AudioClientOrchestrator:
             self.mixer = AudioMixer(
                 sample_rate=self.config.sample_rate,
                 channels=self.config.num_channels,
-                master_volume=self.config.volume
+                master_volume=self.config.volume,
             )
             logger.debug("Created AudioMixer")
 
             # Step 2.5: Create AudioProcessingModule if AEC or audio processing is enabled
-            if any([
-                self.config.enable_aec,
-                self.config.noise_suppression,
-                self.config.high_pass_filter,
-                self.config.auto_gain_control
-            ]):
+            if any(
+                [
+                    self.config.enable_aec,
+                    self.config.noise_suppression,
+                    self.config.high_pass_filter,
+                    self.config.auto_gain_control,
+                ]
+            ):
                 self.apm = AudioProcessingModule(
                     echo_cancellation=self.config.enable_aec,
                     noise_suppression=self.config.noise_suppression,
                     high_pass_filter=self.config.high_pass_filter,
-                    auto_gain_control=self.config.auto_gain_control
+                    auto_gain_control=self.config.auto_gain_control,
                 )
                 logger.info(
                     f"Created AudioProcessingModule: "
@@ -167,8 +166,7 @@ class AudioClientOrchestrator:
             # Step 3: Create TUI manager if enabled (before network manager)
             if self.enable_tui:
                 self.tui_manager = TUIManager(
-                    max_transcript_lines=20,
-                    max_audio_history=50
+                    max_transcript_lines=20, max_audio_history=50
                 )
                 logger.debug("Created TUIManager")
 
@@ -181,7 +179,7 @@ class AudioClientOrchestrator:
                 num_channels=self.config.num_channels,
                 no_playback=self.config.no_playback,
                 on_transcription=self._on_transcription if self.enable_tui else None,
-                on_audio_data=self._on_agent_audio_data if self.enable_tui else None
+                on_audio_data=self._on_agent_audio_data if self.enable_tui else None,
             )
 
             await self.network_manager.connect()
@@ -199,8 +197,10 @@ class AudioClientOrchestrator:
                 num_channels=self.config.num_channels,
                 samples_per_channel=self.config.samples_per_channel,
                 device_index=self.config.input_device,
-                on_audio_captured=self._on_user_audio_captured if self.enable_tui else None,
-                apm=self.apm
+                on_audio_captured=self._on_user_audio_captured
+                if self.enable_tui
+                else None,
+                apm=self.apm,
             )
             logger.debug("Created AudioInputHandler")
 
@@ -212,7 +212,7 @@ class AudioClientOrchestrator:
                     num_channels=self.config.num_channels,
                     samples_per_channel=self.config.samples_per_channel,
                     device_index=self.config.output_device,
-                    apm=self.apm
+                    apm=self.apm,
                 )
                 logger.debug("Created AudioOutputHandler")
 
@@ -286,7 +286,7 @@ class AudioClientOrchestrator:
         Args:
             speaker: Speaker identity (participant identity)
             text: Transcribed text
-            is_final: Whether this is a final or interim transcript
+            is_final: Whether this is a final or interim transcript (ignored, all shown)
         """
         if self.tui_manager:
             # Determine speaker label
@@ -297,7 +297,7 @@ class AudioClientOrchestrator:
                 speaker_label = speaker
 
             # Add to TUI
-            self.tui_manager.add_transcript(speaker_label, text, is_final)
+            self.tui_manager.add_transcript(speaker_label, text)
             logger.debug(f"Transcription: {speaker_label}: {text} (final={is_final})")
 
     def _on_agent_audio_data(self, participant_identity: str, audio_data):
@@ -309,7 +309,9 @@ class AudioClientOrchestrator:
         """
         if self.tui_manager:
             # Update agent audio visualization
-            self.tui_manager.update_agent_audio_level(audio_data, stream_id=participant_identity)
+            self.tui_manager.update_agent_audio_level(
+                audio_data, stream_id=participant_identity
+            )
 
     def _on_user_audio_captured(self, audio_data):
         """Handle captured user audio for visualization.
@@ -426,12 +428,16 @@ class AudioClientOrchestrator:
                 - network: LiveKitNetworkManager metrics
         """
         return {
-            'is_connected': self.network_manager is not None and
-                           self.network_manager.get_metrics()['is_connected'],
-            'mixer': self.mixer.get_metrics() if self.mixer else {},
-            'input': self.input_handler.get_metrics() if self.input_handler else {},
-            'output': self.output_handler.get_metrics() if self.output_handler else None,
-            'network': self.network_manager.get_metrics() if self.network_manager else {}
+            "is_connected": self.network_manager is not None
+            and self.network_manager.get_metrics()["is_connected"],
+            "mixer": self.mixer.get_metrics() if self.mixer else {},
+            "input": self.input_handler.get_metrics() if self.input_handler else {},
+            "output": self.output_handler.get_metrics()
+            if self.output_handler
+            else None,
+            "network": self.network_manager.get_metrics()
+            if self.network_manager
+            else {},
         }
 
     async def __aenter__(self):

@@ -34,8 +34,8 @@ async def test_tui():
 
     try:
         # Add some initial transcripts
-        tui.add_transcript("You", "Hello, testing the TUI!", is_final=True)
-        tui.add_transcript("Agent", "Hi! I can see your message.", is_final=True)
+        tui.add_transcript("You", "Hello, testing the TUI!")
+        tui.add_transcript("Agent", "Hi! I can see your message.")
 
         iteration = 0
         while True:
@@ -54,14 +54,14 @@ async def test_tui():
                 agent_audio = (agent_audio * 4).clip(-32767, 32767).astype(np.int16)
             tui.update_agent_audio_level(agent_audio, stream_id="agent-1")
 
-            # Add interim transcripts occasionally
+            # Add transcripts occasionally
             if iteration % 50 == 0:
-                tui.add_transcript("You", "This is an interim transcript...", is_final=False)
+                tui.add_transcript("You", "This is a partial transcript...")
 
             # Add final transcripts occasionally
             if iteration % 100 == 0:
-                tui.add_transcript("You", f"Final message #{iteration // 100}", is_final=True)
-                tui.add_transcript("Agent", f"Got your message #{iteration // 100}!", is_final=True)
+                tui.add_transcript("You", f"Final message #{iteration // 100}")
+                tui.add_transcript("Agent", f"Got your message #{iteration // 100}!")
 
             # Update display
             tui.update()

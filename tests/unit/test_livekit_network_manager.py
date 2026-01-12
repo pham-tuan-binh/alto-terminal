@@ -12,7 +12,10 @@ import pytest
 import asyncio
 import numpy as np
 from unittest.mock import Mock, MagicMock, AsyncMock, patch, call
-from src.alto_terminal.livekit_network_manager import LiveKitNetworkManager, NetworkMetrics
+from src.alto_terminal.livekit_network_manager import (
+    LiveKitNetworkManager,
+    NetworkMetrics,
+)
 
 
 class TestLiveKitNetworkManagerInitialization:
@@ -28,7 +31,7 @@ class TestLiveKitNetworkManagerInitialization:
             mixer=mixer,
             sample_rate=48000,
             num_channels=1,
-            no_playback=False
+            no_playback=False,
         )
 
         assert manager.url == "wss://livekit.example.com"
@@ -52,7 +55,7 @@ class TestLiveKitNetworkManagerInitialization:
             sample_rate=48000,
             num_channels=1,
             on_participant_connected=on_participant_connected,
-            on_participant_disconnected=on_participant_disconnected
+            on_participant_disconnected=on_participant_disconnected,
         )
 
         assert manager._on_participant_connected_cb is on_participant_connected
@@ -63,7 +66,7 @@ class TestRoomConnection:
     """Test room connection/disconnection."""
 
     @pytest.mark.asyncio
-    @patch('src.alto_terminal.livekit_network_manager.Room')
+    @patch("src.alto_terminal.livekit_network_manager.Room")
     async def test_connect(self, mock_room_class):
         """Test connecting to room."""
         mock_room = AsyncMock()
@@ -75,7 +78,7 @@ class TestRoomConnection:
             token="test-token",
             mixer=Mock(),
             sample_rate=48000,
-            num_channels=1
+            num_channels=1,
         )
 
         room = await manager.connect()
@@ -84,12 +87,22 @@ class TestRoomConnection:
         mock_room_class.assert_called_once()
 
         # Verify event handlers were registered
-        assert mock_room.on.call_count == 5
-        mock_room.on.assert_any_call("participant_connected", manager._on_participant_connected)
-        mock_room.on.assert_any_call("participant_disconnected", manager._on_participant_disconnected)
+        assert mock_room.on.call_count == 4
+        mock_room.on.assert_any_call(
+            "participant_connected", manager._on_participant_connected
+        )
+        mock_room.on.assert_any_call(
+            "participant_disconnected", manager._on_participant_disconnected
+        )
         mock_room.on.assert_any_call("track_subscribed", manager._on_track_subscribed)
-        mock_room.on.assert_any_call("track_unsubscribed", manager._on_track_unsubscribed)
-        mock_room.on.assert_any_call("data_received", manager._on_data_received)
+        mock_room.on.assert_any_call(
+            "track_unsubscribed", manager._on_track_unsubscribed
+        )
+
+        # Verify text stream handler was registered
+        mock_room.register_text_stream_handler.assert_called_once_with(
+            "lk.transcription", manager._handle_text_stream
+        )
 
         # Verify connection was called
         mock_room.connect.assert_called_once()
@@ -103,11 +116,11 @@ class TestRoomConnection:
 
         # Verify metrics
         metrics = manager.get_metrics()
-        assert metrics['is_connected'] is True
-        assert metrics['room_name'] == "test-room"
+        assert metrics["is_connected"] is True
+        assert metrics["room_name"] == "test-room"
 
     @pytest.mark.asyncio
-    @patch('src.alto_terminal.livekit_network_manager.Room')
+    @patch("src.alto_terminal.livekit_network_manager.Room")
     async def test_connect_already_connected(self, mock_room_class):
         """Test connecting when already connected."""
         mock_room = AsyncMock()
@@ -119,7 +132,7 @@ class TestRoomConnection:
             token="test-token",
             mixer=Mock(),
             sample_rate=48000,
-            num_channels=1
+            num_channels=1,
         )
 
         await manager.connect()
@@ -129,7 +142,7 @@ class TestRoomConnection:
         assert mock_room_class.call_count == 1
 
     @pytest.mark.asyncio
-    @patch('src.alto_terminal.livekit_network_manager.Room')
+    @patch("src.alto_terminal.livekit_network_manager.Room")
     async def test_connect_error(self, mock_room_class):
         """Test error during connection."""
         mock_room = AsyncMock()
@@ -141,7 +154,7 @@ class TestRoomConnection:
             token="test-token",
             mixer=Mock(),
             sample_rate=48000,
-            num_channels=1
+            num_channels=1,
         )
 
         with pytest.raises(Exception, match="Connection failed"):
@@ -152,10 +165,10 @@ class TestRoomConnection:
 
         # Verify metrics
         metrics = manager.get_metrics()
-        assert metrics['is_connected'] is False
+        assert metrics["is_connected"] is False
 
     @pytest.mark.asyncio
-    @patch('src.alto_terminal.livekit_network_manager.Room')
+    @patch("src.alto_terminal.livekit_network_manager.Room")
     async def test_disconnect(self, mock_room_class):
         """Test disconnecting from room."""
         mock_room = AsyncMock()
@@ -167,7 +180,7 @@ class TestRoomConnection:
             token="test-token",
             mixer=Mock(),
             sample_rate=48000,
-            num_channels=1
+            num_channels=1,
         )
 
         await manager.connect()
@@ -182,8 +195,8 @@ class TestRoomConnection:
 
         # Verify metrics
         metrics = manager.get_metrics()
-        assert metrics['is_connected'] is False
-        assert metrics['room_name'] is None
+        assert metrics["is_connected"] is False
+        assert metrics["room_name"] is None
 
     @pytest.mark.asyncio
     async def test_disconnect_not_connected(self):
@@ -193,7 +206,7 @@ class TestRoomConnection:
             token="test-token",
             mixer=Mock(),
             sample_rate=48000,
-            num_channels=1
+            num_channels=1,
         )
 
         # Should not raise error
@@ -204,10 +217,12 @@ class TestTrackPublishing:
     """Test track publishing."""
 
     @pytest.mark.asyncio
-    @patch('src.alto_terminal.livekit_network_manager.Room')
-    @patch('src.alto_terminal.livekit_network_manager.rtc.AudioSource')
-    @patch('src.alto_terminal.livekit_network_manager.rtc.LocalAudioTrack')
-    async def test_publish_audio_track(self, mock_track_class, mock_audio_source_class, mock_room_class):
+    @patch("src.alto_terminal.livekit_network_manager.Room")
+    @patch("src.alto_terminal.livekit_network_manager.rtc.AudioSource")
+    @patch("src.alto_terminal.livekit_network_manager.rtc.LocalAudioTrack")
+    async def test_publish_audio_track(
+        self, mock_track_class, mock_audio_source_class, mock_room_class
+    ):
         """Test publishing audio track."""
         mock_room = AsyncMock()
         mock_room.name = "test-room"
@@ -225,7 +240,7 @@ class TestTrackPublishing:
             token="test-token",
             mixer=Mock(),
             sample_rate=48000,
-            num_channels=1
+            num_channels=1,
         )
 
         await manager.connect()
@@ -236,8 +251,7 @@ class TestTrackPublishing:
 
         # Verify LocalAudioTrack was created
         mock_track_class.create_audio_track.assert_called_once_with(
-            "microphone",
-            mock_audio_source
+            "microphone", mock_audio_source
         )
 
         # Verify track was published
@@ -257,7 +271,7 @@ class TestTrackPublishing:
             token="test-token",
             mixer=Mock(),
             sample_rate=48000,
-            num_channels=1
+            num_channels=1,
         )
 
         with pytest.raises(RuntimeError, match="Must connect to room"):
@@ -278,7 +292,7 @@ class TestEventHandlers:
             mixer=mixer,
             sample_rate=48000,
             num_channels=1,
-            on_participant_connected=on_participant_connected_cb
+            on_participant_connected=on_participant_connected_cb,
         )
 
         # Simulate participant connected
@@ -293,7 +307,7 @@ class TestEventHandlers:
 
         # Verify metrics
         metrics = manager.get_metrics()
-        assert metrics['participant_count'] == 1
+        assert metrics["participant_count"] == 1
 
     def test_on_participant_disconnected(self):
         """Test participant disconnected event handler."""
@@ -306,7 +320,7 @@ class TestEventHandlers:
             mixer=mixer,
             sample_rate=48000,
             num_channels=1,
-            on_participant_disconnected=on_participant_disconnected_cb
+            on_participant_disconnected=on_participant_disconnected_cb,
         )
 
         # Set initial participant count
@@ -326,7 +340,7 @@ class TestEventHandlers:
 
         # Verify metrics
         metrics = manager.get_metrics()
-        assert metrics['participant_count'] == 1
+        assert metrics["participant_count"] == 1
 
     @pytest.mark.asyncio
     async def test_on_track_subscribed_audio(self):
@@ -340,7 +354,7 @@ class TestEventHandlers:
             mixer=mixer,
             sample_rate=48000,
             num_channels=1,
-            on_track_subscribed=on_track_subscribed_cb
+            on_track_subscribed=on_track_subscribed_cb,
         )
 
         # Create mock audio track - use MagicMock and patch isinstance check
@@ -353,12 +367,14 @@ class TestEventHandlers:
         participant.identity = "alice"
 
         # Mock isinstance to return True for RemoteAudioTrack check
-        with patch('src.alto_terminal.livekit_network_manager.isinstance') as mock_isinstance:
+        with patch(
+            "src.alto_terminal.livekit_network_manager.isinstance"
+        ) as mock_isinstance:
             # Make isinstance return True for RemoteAudioTrack check
             mock_isinstance.return_value = True
 
             # Mock asyncio.create_task to avoid actual task creation
-            with patch('asyncio.create_task') as mock_create_task:
+            with patch("asyncio.create_task") as mock_create_task:
                 mock_task = Mock()
                 mock_create_task.return_value = mock_task
 
@@ -371,11 +387,13 @@ class TestEventHandlers:
                 mock_create_task.assert_called_once()
 
                 # Verify callback was called
-                on_track_subscribed_cb.assert_called_once_with(track, publication, participant)
+                on_track_subscribed_cb.assert_called_once_with(
+                    track, publication, participant
+                )
 
                 # Verify metrics
                 metrics = manager.get_metrics()
-                assert metrics['tracks_subscribed'] == 1
+                assert metrics["tracks_subscribed"] == 1
 
     def test_on_track_subscribed_non_audio(self):
         """Test track subscribed for non-audio track."""
@@ -386,7 +404,7 @@ class TestEventHandlers:
             token="test-token",
             mixer=mixer,
             sample_rate=48000,
-            num_channels=1
+            num_channels=1,
         )
 
         # Create mock video track
@@ -414,7 +432,7 @@ class TestEventHandlers:
             mixer=mixer,
             sample_rate=48000,
             num_channels=1,
-            on_track_unsubscribed=on_track_unsubscribed_cb
+            on_track_unsubscribed=on_track_unsubscribed_cb,
         )
 
         # Set initial metrics
@@ -442,11 +460,13 @@ class TestEventHandlers:
         mock_task.cancel.assert_called_once()
 
         # Verify callback was called
-        on_track_unsubscribed_cb.assert_called_once_with(track, publication, participant)
+        on_track_unsubscribed_cb.assert_called_once_with(
+            track, publication, participant
+        )
 
         # Verify metrics
         metrics = manager.get_metrics()
-        assert metrics['tracks_subscribed'] == 1
+        assert metrics["tracks_subscribed"] == 1
 
 
 class TestRemoteAudioProcessing:
@@ -463,7 +483,7 @@ class TestRemoteAudioProcessing:
             mixer=mixer,
             sample_rate=48000,
             num_channels=1,
-            no_playback=False
+            no_playback=False,
         )
 
         # Create mock track and stream
@@ -495,7 +515,9 @@ class TestRemoteAudioProcessing:
         mock_stream.__aiter__ = lambda self: mock_stream_iter()
 
         # Patch AudioStream
-        with patch('src.alto_terminal.livekit_network_manager.rtc.AudioStream') as mock_audio_stream:
+        with patch(
+            "src.alto_terminal.livekit_network_manager.rtc.AudioStream"
+        ) as mock_audio_stream:
             mock_audio_stream.return_value = mock_stream
 
             # Process audio
@@ -503,9 +525,7 @@ class TestRemoteAudioProcessing:
 
             # Verify AudioStream was created
             mock_audio_stream.assert_called_once_with(
-                track,
-                sample_rate=48000,
-                num_channels=1
+                track, sample_rate=48000, num_channels=1
             )
 
             # Verify frames were added to mixer (2 frames)
@@ -513,11 +533,11 @@ class TestRemoteAudioProcessing:
 
             # Verify participant identity was used
             for call in mixer.add_audio_data.call_args_list:
-                assert call[1]['stream_id'] == "alice"
+                assert call[1]["stream_id"] == "alice"
 
             # Verify metrics
             metrics = manager.get_metrics()
-            assert metrics['frames_received'] == 2
+            assert metrics["frames_received"] == 2
 
     @pytest.mark.asyncio
     async def test_handle_remote_audio_track_no_playback(self):
@@ -530,7 +550,7 @@ class TestRemoteAudioProcessing:
             mixer=mixer,
             sample_rate=48000,
             num_channels=1,
-            no_playback=True  # Don't route to mixer
+            no_playback=True,  # Don't route to mixer
         )
 
         # Create mock track and stream
@@ -550,7 +570,9 @@ class TestRemoteAudioProcessing:
         mock_stream = Mock()
         mock_stream.__aiter__ = lambda self: mock_stream_iter()
 
-        with patch('src.alto_terminal.livekit_network_manager.rtc.AudioStream') as mock_audio_stream:
+        with patch(
+            "src.alto_terminal.livekit_network_manager.rtc.AudioStream"
+        ) as mock_audio_stream:
             mock_audio_stream.return_value = mock_stream
 
             await manager._handle_remote_audio_track(track, "alice")
@@ -568,7 +590,7 @@ class TestRemoteAudioProcessing:
             token="test-token",
             mixer=mixer,
             sample_rate=48000,
-            num_channels=1
+            num_channels=1,
         )
 
         # Create mock track that raises CancelledError
@@ -585,7 +607,9 @@ class TestRemoteAudioProcessing:
 
         mock_stream = MockAsyncIterator()
 
-        with patch('src.alto_terminal.livekit_network_manager.rtc.AudioStream') as mock_audio_stream:
+        with patch(
+            "src.alto_terminal.livekit_network_manager.rtc.AudioStream"
+        ) as mock_audio_stream:
             mock_audio_stream.return_value = mock_stream
 
             # Should raise CancelledError
@@ -603,19 +627,19 @@ class TestMetrics:
             token="test-token",
             mixer=Mock(),
             sample_rate=48000,
-            num_channels=1
+            num_channels=1,
         )
 
         metrics = manager.get_metrics()
-        assert metrics['is_connected'] is False
-        assert metrics['room_name'] is None
-        assert metrics['participant_count'] == 0
-        assert metrics['tracks_subscribed'] == 0
-        assert metrics['frames_received'] == 0
-        assert metrics['active_audio_tasks'] == 0
+        assert metrics["is_connected"] is False
+        assert metrics["room_name"] is None
+        assert metrics["participant_count"] == 0
+        assert metrics["tracks_subscribed"] == 0
+        assert metrics["frames_received"] == 0
+        assert metrics["active_audio_tasks"] == 0
 
     @pytest.mark.asyncio
-    @patch('src.alto_terminal.livekit_network_manager.Room')
+    @patch("src.alto_terminal.livekit_network_manager.Room")
     async def test_metrics_after_connect(self, mock_room_class):
         """Test metrics after connecting."""
         mock_room = AsyncMock()
@@ -627,14 +651,14 @@ class TestMetrics:
             token="test-token",
             mixer=Mock(),
             sample_rate=48000,
-            num_channels=1
+            num_channels=1,
         )
 
         await manager.connect()
 
         metrics = manager.get_metrics()
-        assert metrics['is_connected'] is True
-        assert metrics['room_name'] == "test-room"
+        assert metrics["is_connected"] is True
+        assert metrics["room_name"] == "test-room"
 
 
 if __name__ == "__main__":
