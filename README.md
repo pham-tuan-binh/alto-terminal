@@ -9,6 +9,8 @@ A Python audio client that streams audio to and from LiveKit without using the a
 - Support for custom audio devices
 - Adjustable volume control
 - Mute/unmute functionality
+- **Acoustic Echo Cancellation (AEC)** using LiveKit's built-in WebRTC AudioProcessingModule
+- **Noise Suppression** and audio enhancement features
 - **Terminal UI (TUI) visualization** with conversation transcripts and real-time audio levels
 - No dependency on the LiveKit agents framework - uses only the client SDK
 
@@ -76,6 +78,27 @@ Disable audio playback (capture only):
 python main.py --no-playback
 ```
 
+### Echo Cancellation and Audio Processing
+
+Enable acoustic echo cancellation and other audio processing features:
+
+```bash
+# Enable echo cancellation only
+python main.py --enable-aec
+
+# Enable all audio processing features
+python main.py --enable-aec --noise-suppression --high-pass-filter --auto-gain-control
+
+# Enable specific features for voice AI applications
+python main.py --enable-aec --noise-suppression
+```
+
+Audio processing features:
+- `--enable-aec`: Acoustic Echo Cancellation - removes echoes from speaker playback
+- `--noise-suppression`: Reduces background noise (traffic, music, etc.)
+- `--high-pass-filter`: Removes low-frequency rumble
+- `--auto-gain-control`: Automatically adjusts microphone gain for consistent volume
+
 ### Terminal UI Mode
 
 Enable the Terminal User Interface for visual feedback:
@@ -101,6 +124,10 @@ The TUI provides:
 -c, --channels INT          Number of channels (default: 1)
 --no-playback              Disable audio playback (capture only)
 --volume FLOAT             Master playback volume (0.0 to 1.0, default: 1.0)
+--enable-aec               Enable acoustic echo cancellation (AEC)
+--noise-suppression        Enable noise suppression
+--high-pass-filter         Enable high-pass filter
+--auto-gain-control        Enable automatic gain control (AGC)
 --url URL                  LiveKit server URL
 --api-key KEY              LiveKit API key
 --api-secret SECRET        LiveKit API secret
@@ -199,7 +226,7 @@ Alice and Bob will be able to hear each other in the room.
 This Python implementation closely mirrors the Rust `local_audio` example but with some differences:
 
 - Uses `sounddevice` instead of `cpal` for audio I/O
-- Simplified echo cancellation (not included in this basic version)
+- **Now includes echo cancellation** using LiveKit's AudioProcessingModule (WebRTC-based)
 - Uses Python's `asyncio` for async operations instead of Tokio
 - Event handlers use LiveKit's Python SDK event system
 

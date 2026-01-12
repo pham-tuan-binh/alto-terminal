@@ -15,6 +15,7 @@ import asyncio
 import logging
 from typing import Optional
 from dataclasses import dataclass
+from livekit.rtc import AudioProcessingModule
 
 from .config import AudioConfig
 from .audio_mixer import AudioMixer
@@ -100,6 +101,7 @@ class AudioClientOrchestrator:
         self.input_handler: Optional[AudioInputHandler] = None
         self.output_handler: Optional[AudioOutputHandler] = None
         self.tui_manager: Optional[TUIManager] = None
+        self.apm: Optional[AudioProcessingModule] = None
 
         # Event loop reference (for audio callbacks)
         self._event_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -141,6 +143,27 @@ class AudioClientOrchestrator:
             )
             logger.debug("Created AudioMixer")
 
+            # Step 2.5: Create AudioProcessingModule if AEC or audio processing is enabled
+            if any([
+                self.config.enable_aec,
+                self.config.noise_suppression,
+                self.config.high_pass_filter,
+                self.config.auto_gain_control
+            ]):
+                self.apm = AudioProcessingModule(
+                    echo_cancellation=self.config.enable_aec,
+                    noise_suppression=self.config.noise_suppression,
+                    high_pass_filter=self.config.high_pass_filter,
+                    auto_gain_control=self.config.auto_gain_control
+                )
+                logger.info(
+                    f"Created AudioProcessingModule: "
+                    f"AEC={self.config.enable_aec}, "
+                    f"NS={self.config.noise_suppression}, "
+                    f"HPF={self.config.high_pass_filter}, "
+                    f"AGC={self.config.auto_gain_control}"
+                )
+
             # Step 3: Create TUI manager if enabled (before network manager)
             if self.enable_tui:
                 self.tui_manager = TUIManager(
@@ -168,7 +191,7 @@ class AudioClientOrchestrator:
             await self.network_manager.publish_audio_track()
             logger.debug("Published audio track")
 
-            # Step 6: Create input handler (needs audio_source, event_loop)
+            # Step 6: Create input handler (needs audio_source, event_loop, optional apm)
             self.input_handler = AudioInputHandler(
                 audio_source=self.network_manager.audio_source,
                 event_loop=self._event_loop,
@@ -176,18 +199,20 @@ class AudioClientOrchestrator:
                 num_channels=self.config.num_channels,
                 samples_per_channel=self.config.samples_per_channel,
                 device_index=self.config.input_device,
-                on_audio_captured=self._on_user_audio_captured if self.enable_tui else None
+                on_audio_captured=self._on_user_audio_captured if self.enable_tui else None,
+                apm=self.apm
             )
             logger.debug("Created AudioInputHandler")
 
-            # Step 7: Create output handler (needs mixer)
+            # Step 7: Create output handler (needs mixer, optional apm)
             if not self.config.no_playback:
                 self.output_handler = AudioOutputHandler(
                     mixer=self.mixer,
                     sample_rate=self.config.sample_rate,
                     num_channels=self.config.num_channels,
                     samples_per_channel=self.config.samples_per_channel,
-                    device_index=self.config.output_device
+                    device_index=self.config.output_device,
+                    apm=self.apm
                 )
                 logger.debug("Created AudioOutputHandler")
 

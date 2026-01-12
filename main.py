@@ -84,6 +84,28 @@ async def main():
         help="Master playback volume (0.0 to 1.0, default: 1.0)"
     )
 
+    # Audio processing features
+    parser.add_argument(
+        "--enable-aec",
+        action="store_true",
+        help="Enable acoustic echo cancellation (AEC)"
+    )
+    parser.add_argument(
+        "--noise-suppression",
+        action="store_true",
+        help="Enable noise suppression"
+    )
+    parser.add_argument(
+        "--high-pass-filter",
+        action="store_true",
+        help="Enable high-pass filter"
+    )
+    parser.add_argument(
+        "--auto-gain-control",
+        action="store_true",
+        help="Enable automatic gain control (AGC)"
+    )
+
     # LiveKit connection
     parser.add_argument(
         "--url",
@@ -175,7 +197,11 @@ async def main():
         input_device=args.input_device,
         output_device=args.output_device,
         volume=args.volume,
-        no_playback=args.no_playback
+        no_playback=args.no_playback,
+        enable_aec=args.enable_aec,
+        noise_suppression=args.noise_suppression,
+        high_pass_filter=args.high_pass_filter,
+        auto_gain_control=args.auto_gain_control
     )
 
     # Create orchestrator

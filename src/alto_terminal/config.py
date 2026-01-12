@@ -30,6 +30,10 @@ class AudioConfig:
         output_device: Audio output device index, None for default (default: None)
         volume: Master playback volume 0.0-1.0 (default: 1.0)
         no_playback: Disable audio playback (capture only) (default: False)
+        enable_aec: Enable acoustic echo cancellation (default: False)
+        noise_suppression: Enable noise suppression (default: False)
+        high_pass_filter: Enable high-pass filter (default: False)
+        auto_gain_control: Enable automatic gain control (default: False)
     """
 
     sample_rate: int = SAMPLE_RATE
@@ -39,6 +43,10 @@ class AudioConfig:
     output_device: Optional[int] = None
     volume: float = 1.0
     no_playback: bool = False
+    enable_aec: bool = False
+    noise_suppression: bool = False
+    high_pass_filter: bool = False
+    auto_gain_control: bool = False
 
     def __post_init__(self):
         """Validate configuration after initialization."""

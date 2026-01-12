@@ -490,5 +490,177 @@ class TestContextManager:
         mock_stream.close.assert_called_once()
 
 
+class TestAudioProcessingModule:
+    """Test AudioProcessingModule (APM) integration."""
+
+    def test_initialization_with_apm(self):
+        """Test handler initialization with APM."""
+        mock_apm = Mock()
+
+        handler = AudioInputHandler(
+            audio_source=Mock(),
+            event_loop=Mock(),
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None,
+            apm=mock_apm
+        )
+
+        assert handler._apm is mock_apm
+        assert handler._apm_frame_size == 480  # 48000 / 100 = 480 (10ms)
+
+    def test_initialization_without_apm(self):
+        """Test handler initialization without APM."""
+        handler = AudioInputHandler(
+            audio_source=Mock(),
+            event_loop=Mock(),
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None
+        )
+
+        assert handler._apm is None
+
+    @patch('src.alto_terminal.audio_input_handler.asyncio.run_coroutine_threadsafe')
+    def test_audio_callback_with_apm_processes_stream(self, mock_run_coro):
+        """Test that APM processes capture stream when enabled."""
+        mock_apm = Mock()
+
+        handler = AudioInputHandler(
+            audio_source=Mock(),
+            event_loop=Mock(),
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,  # 50ms
+            device_index=None,
+            apm=mock_apm
+        )
+
+        # Simulate audio input: 2400 samples (50ms @ 48kHz)
+        indata = np.zeros((2400, 1), dtype=np.float32)
+
+        # Call the callback
+        handler._audio_callback(indata, 2400, None, None)
+
+        # Verify APM process_stream was called 5 times (50ms → 5x 10ms chunks)
+        assert mock_apm.process_stream.call_count == 5
+
+        # Verify each call received an AudioFrame with 480 samples (10ms)
+        for call in mock_apm.process_stream.call_args_list:
+            frame = call[0][0]
+            assert frame.samples_per_channel == 480
+            assert frame.sample_rate == 48000
+            assert frame.num_channels == 1
+
+    @patch('src.alto_terminal.audio_input_handler.asyncio.run_coroutine_threadsafe')
+    @patch('src.alto_terminal.audio_input_handler.rtc.AudioFrame')
+    def test_audio_callback_without_apm_no_processing(self, mock_audio_frame, mock_run_coro):
+        """Test that without APM, no processing occurs."""
+        handler = AudioInputHandler(
+            audio_source=Mock(),
+            event_loop=Mock(),
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None,
+            apm=None  # No APM
+        )
+
+        indata = np.zeros((2400, 1), dtype=np.float32)
+        handler._audio_callback(indata, 2400, None, None)
+
+        # Verify AudioFrame was still created (no APM doesn't break flow)
+        assert mock_audio_frame.call_count == 1
+
+    @patch('src.alto_terminal.audio_input_handler.asyncio.run_coroutine_threadsafe')
+    @patch('src.alto_terminal.audio_input_handler.rtc.AudioFrame')
+    def test_audio_callback_apm_modifies_data(self, mock_audio_frame, mock_run_coro):
+        """Test that APM-processed data is used in final frame."""
+        mock_apm = Mock()
+
+        # Mock APM to modify audio data (simulate noise reduction)
+        def process_stream_side_effect(frame):
+            # Modify the frame data in-place (simulate processing)
+            processed_data = np.zeros(480, dtype=np.int16)
+            frame.data = processed_data.tobytes()
+
+        mock_apm.process_stream.side_effect = process_stream_side_effect
+
+        handler = AudioInputHandler(
+            audio_source=Mock(),
+            event_loop=Mock(),
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None,
+            apm=mock_apm
+        )
+
+        # Input with non-zero data
+        indata = np.full((2400, 1), 0.5, dtype=np.float32)
+        handler._audio_callback(indata, 2400, None, None)
+
+        # Verify final AudioFrame was created with processed data
+        mock_audio_frame.assert_called()
+        final_frame_call = mock_audio_frame.call_args[1]
+        final_audio_data = np.frombuffer(final_frame_call['data'], dtype=np.int16)
+
+        # After APM processing (mocked to return zeros), should be all zeros
+        assert np.all(final_audio_data == 0)
+
+    @patch('src.alto_terminal.audio_input_handler.asyncio.run_coroutine_threadsafe')
+    def test_audio_callback_with_visualization_callback(self, mock_run_coro):
+        """Test that visualization callback receives processed audio."""
+        mock_apm = Mock()
+        mock_visualization_callback = Mock()
+
+        handler = AudioInputHandler(
+            audio_source=Mock(),
+            event_loop=Mock(),
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None,
+            on_audio_captured=mock_visualization_callback,
+            apm=mock_apm
+        )
+
+        indata = np.zeros((2400, 1), dtype=np.float32)
+        handler._audio_callback(indata, 2400, None, None)
+
+        # Verify visualization callback was called with int16 audio data
+        mock_visualization_callback.assert_called_once()
+        captured_audio = mock_visualization_callback.call_args[0][0]
+        assert captured_audio.dtype == np.int16
+        assert len(captured_audio) == 2400
+
+    @patch('src.alto_terminal.audio_input_handler.asyncio.run_coroutine_threadsafe')
+    def test_audio_callback_apm_handles_partial_frames(self, mock_run_coro):
+        """Test that partial frames (not evenly divisible by 480) are handled."""
+        mock_apm = Mock()
+
+        handler = AudioInputHandler(
+            audio_source=Mock(),
+            event_loop=Mock(),
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2300,  # Not divisible by 480
+            device_index=None,
+            apm=mock_apm
+        )
+
+        # 2300 samples = 4 complete 10ms chunks (1920) + partial chunk (380)
+        indata = np.zeros((2300, 1), dtype=np.float32)
+        handler._audio_callback(indata, 2300, None, None)
+
+        # Should only process complete chunks (1920 samples = 4 × 480)
+        assert mock_apm.process_stream.call_count == 4
+
+        # Verify run_coroutine_threadsafe was called (final frame created)
+        assert mock_run_coro.call_count == 1
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

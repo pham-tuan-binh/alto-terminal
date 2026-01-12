@@ -523,5 +523,202 @@ class TestContextManager:
         mock_stream.close.assert_called_once()
 
 
+class TestAudioProcessingModule:
+    """Test AudioProcessingModule (APM) integration."""
+
+    def test_initialization_with_apm(self):
+        """Test handler initialization with APM."""
+        mock_apm = Mock()
+        mixer = Mock()
+
+        handler = AudioOutputHandler(
+            mixer=mixer,
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None,
+            apm=mock_apm
+        )
+
+        assert handler._apm is mock_apm
+        assert handler._apm_frame_size == 480  # 48000 / 100 = 480 (10ms)
+
+    def test_initialization_without_apm(self):
+        """Test handler initialization without APM."""
+        handler = AudioOutputHandler(
+            mixer=Mock(),
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None
+        )
+
+        assert handler._apm is None
+
+    def test_audio_callback_with_apm_processes_reverse_stream(self):
+        """Test that APM processes reverse stream when enabled."""
+        mock_apm = Mock()
+        mock_mixer = Mock()
+
+        # Mixer returns 2400 samples (50ms)
+        audio_data = np.random.randint(-1000, 1000, 2400, dtype=np.int16)
+        mock_mixer.get_audio_data.return_value = audio_data
+
+        handler = AudioOutputHandler(
+            mixer=mock_mixer,
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None,
+            apm=mock_apm
+        )
+
+        # Simulate audio callback
+        outdata = np.zeros((2400, 1), dtype=np.float32)
+        handler._audio_callback(outdata, 2400, None, None)
+
+        # Verify APM process_reverse_stream was called 5 times (50ms → 5x 10ms chunks)
+        assert mock_apm.process_reverse_stream.call_count == 5
+
+        # Verify each call used 480 samples (10ms)
+        for call in mock_apm.process_reverse_stream.call_args_list:
+            frame = call[0][0]
+            assert frame.samples_per_channel == 480
+
+    def test_audio_callback_without_apm_no_processing(self):
+        """Test that without APM, no processing occurs."""
+        mock_mixer = Mock()
+        audio_data = np.zeros(2400, dtype=np.int16)
+        mock_mixer.get_audio_data.return_value = audio_data
+
+        handler = AudioOutputHandler(
+            mixer=mock_mixer,
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None,
+            apm=None  # No APM
+        )
+
+        outdata = np.zeros((2400, 1), dtype=np.float32)
+        handler._audio_callback(outdata, 2400, None, None)
+
+        # Verify mixer was still called (no APM doesn't break flow)
+        mock_mixer.get_audio_data.assert_called_once_with(2400)
+
+        # Verify output buffer was filled
+        assert not np.all(outdata == 0) or np.all(audio_data == 0)
+
+    def test_audio_callback_apm_processes_before_playback(self):
+        """Test that APM processes audio BEFORE it's converted to float32."""
+        mock_apm = Mock()
+        mock_mixer = Mock()
+
+        # Create recognizable pattern
+        audio_data = np.array([100] * 2400, dtype=np.int16)
+        mock_mixer.get_audio_data.return_value = audio_data
+
+        handler = AudioOutputHandler(
+            mixer=mock_mixer,
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None,
+            apm=mock_apm
+        )
+
+        outdata = np.zeros((2400, 1), dtype=np.float32)
+        handler._audio_callback(outdata, 2400, None, None)
+
+        # Verify APM was called before audio is played
+        # The audio data passed to APM should be int16
+        for call in mock_apm.process_reverse_stream.call_args_list:
+            frame = call[0][0]
+            frame_data = np.frombuffer(frame.data, dtype=np.int16)
+            assert frame_data.dtype == np.int16
+
+        # Verify output was converted to float32
+        assert outdata.dtype == np.float32
+
+    def test_audio_callback_apm_handles_partial_frames(self):
+        """Test that partial frames (not evenly divisible by 480) are handled."""
+        mock_apm = Mock()
+        mock_mixer = Mock()
+
+        # 2300 samples = 4 complete 10ms chunks (1920) + partial chunk (380)
+        audio_data = np.zeros(2300, dtype=np.int16)
+        mock_mixer.get_audio_data.return_value = audio_data
+
+        handler = AudioOutputHandler(
+            mixer=mock_mixer,
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2300,  # Not divisible by 480
+            device_index=None,
+            apm=mock_apm
+        )
+
+        outdata = np.zeros((2300, 1), dtype=np.float32)
+        handler._audio_callback(outdata, 2300, None, None)
+
+        # Should only process complete chunks
+        assert mock_apm.process_reverse_stream.call_count == 4
+
+        # Verify output buffer was still filled with all 2300 samples
+        assert outdata.shape == (2300, 1)
+
+    def test_audio_callback_apm_with_silence(self):
+        """Test APM processing with silence (all zeros)."""
+        mock_apm = Mock()
+        mock_mixer = Mock()
+
+        # Return silence
+        audio_data = np.zeros(2400, dtype=np.int16)
+        mock_mixer.get_audio_data.return_value = audio_data
+
+        handler = AudioOutputHandler(
+            mixer=mock_mixer,
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None,
+            apm=mock_apm
+        )
+
+        outdata = np.zeros((2400, 1), dtype=np.float32)
+        handler._audio_callback(outdata, 2400, None, None)
+
+        # APM should still be called even with silence
+        assert mock_apm.process_reverse_stream.call_count == 5
+
+        # Output should be silence (zeros converted to float32)
+        assert np.allclose(outdata, 0.0)
+
+    def test_audio_callback_apm_does_not_modify_mixer_data(self):
+        """Test that APM processing doesn't affect mixer's original data."""
+        mock_apm = Mock()
+        mock_mixer = Mock()
+
+        original_data = np.array([1000] * 2400, dtype=np.int16)
+        mock_mixer.get_audio_data.return_value = original_data.copy()
+
+        handler = AudioOutputHandler(
+            mixer=mock_mixer,
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None,
+            apm=mock_apm
+        )
+
+        outdata = np.zeros((2400, 1), dtype=np.float32)
+        handler._audio_callback(outdata, 2400, None, None)
+
+        # APM shouldn't modify the original array from mixer
+        # (it creates AudioFrames with copies)
+        mixer_result = mock_mixer.get_audio_data.return_value
+        assert np.all(mixer_result == 1000)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

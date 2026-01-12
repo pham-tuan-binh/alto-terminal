@@ -84,11 +84,12 @@ class TestRoomConnection:
         mock_room_class.assert_called_once()
 
         # Verify event handlers were registered
-        assert mock_room.on.call_count == 4
+        assert mock_room.on.call_count == 5
         mock_room.on.assert_any_call("participant_connected", manager._on_participant_connected)
         mock_room.on.assert_any_call("participant_disconnected", manager._on_participant_disconnected)
         mock_room.on.assert_any_call("track_subscribed", manager._on_track_subscribed)
         mock_room.on.assert_any_call("track_unsubscribed", manager._on_track_unsubscribed)
+        mock_room.on.assert_any_call("data_received", manager._on_data_received)
 
         # Verify connection was called
         mock_room.connect.assert_called_once()

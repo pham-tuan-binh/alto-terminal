@@ -14,6 +14,8 @@ Key design decisions:
 import logging
 import numpy as np
 import sounddevice as sd
+from livekit import rtc
+from livekit.rtc import AudioProcessingModule
 from dataclasses import dataclass
 from typing import Optional
 
@@ -67,7 +69,8 @@ class AudioOutputHandler:
         sample_rate: int,
         num_channels: int,
         samples_per_channel: int,
-        device_index: Optional[int] = None
+        device_index: Optional[int] = None,
+        apm: Optional[AudioProcessingModule] = None
     ):
         """Initialize audio output handler.
 
@@ -77,12 +80,14 @@ class AudioOutputHandler:
             num_channels: Number of audio channels (typically 1 for mono)
             samples_per_channel: Number of samples per audio frame (e.g., 2400 for 50ms)
             device_index: Optional device index (None = default device)
+            apm: Optional AudioProcessingModule for reverse stream processing (echo cancellation)
         """
         self.mixer = mixer
         self.sample_rate = sample_rate
         self.num_channels = num_channels
         self.samples_per_channel = samples_per_channel
         self.device_index = device_index
+        self._apm = apm
 
         # Output stream (created when started)
         self._output_stream: Optional[sd.OutputStream] = None
@@ -90,10 +95,13 @@ class AudioOutputHandler:
         # Metrics
         self._metrics = OutputMetrics()
 
+        # APM requires 10ms frames (480 samples at 48kHz)
+        self._apm_frame_size = sample_rate // 100
+
         logger.info(
             f"Initialized AudioOutputHandler: {sample_rate}Hz, "
             f"{num_channels}ch, {samples_per_channel} samples/frame, "
-            f"device={device_index}"
+            f"device={device_index}, AEC={'enabled' if apm else 'disabled'}"
         )
 
     def start(self):
@@ -186,6 +194,26 @@ class AudioOutputHandler:
             # Check if we got silence (underrun)
             if len(audio_data) == frames and np.all(audio_data == 0):
                 self._metrics.underruns += 1
+
+            # Process reverse stream for echo cancellation (if APM is enabled)
+            # This tells the AEC what audio is being played so it can cancel echoes
+            if self._apm:
+                # APM requires 10ms frames, so split our 50ms frame into 5x 10ms chunks
+                for i in range(0, len(audio_data), self._apm_frame_size):
+                    chunk = audio_data[i:i + self._apm_frame_size]
+
+                    # Only process if we have a complete 10ms frame
+                    if len(chunk) == self._apm_frame_size:
+                        # Create AudioFrame for APM reverse stream processing
+                        apm_frame = rtc.AudioFrame(
+                            data=chunk.tobytes(),
+                            sample_rate=self.sample_rate,
+                            num_channels=self.num_channels,
+                            samples_per_channel=len(chunk)
+                        )
+
+                        # Process reverse stream (tells AEC what's being played)
+                        self._apm.process_reverse_stream(apm_frame)
 
             # Convert int16 (range -32768 to 32767) → float32 (range -1.0 to 1.0)
             # Mixer uses int16 with range [-32768, 32767]

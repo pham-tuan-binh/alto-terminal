@@ -15,6 +15,7 @@ import logging
 import numpy as np
 import sounddevice as sd
 from livekit import rtc
+from livekit.rtc import AudioProcessingModule
 from dataclasses import dataclass, field
 from typing import Optional, Callable
 
@@ -68,7 +69,8 @@ class AudioInputHandler:
         num_channels: int,
         samples_per_channel: int,
         device_index: Optional[int] = None,
-        on_audio_captured: Optional[Callable[[np.ndarray], None]] = None
+        on_audio_captured: Optional[Callable[[np.ndarray], None]] = None,
+        apm: Optional[AudioProcessingModule] = None
     ):
         """Initialize audio input handler.
 
@@ -81,6 +83,7 @@ class AudioInputHandler:
             device_index: Optional device index (None = default device)
             on_audio_captured: Optional callback for captured audio data (for visualization)
                                Called with int16 audio data from OS audio thread
+            apm: Optional AudioProcessingModule for echo cancellation and noise suppression
         """
         self.audio_source = audio_source
         self.event_loop = event_loop
@@ -89,6 +92,7 @@ class AudioInputHandler:
         self.samples_per_channel = samples_per_channel
         self.device_index = device_index
         self._on_audio_captured = on_audio_captured
+        self._apm = apm
 
         # Input stream (created when started)
         self._input_stream: Optional[sd.InputStream] = None
@@ -96,10 +100,13 @@ class AudioInputHandler:
         # Metrics
         self._metrics = InputMetrics()
 
+        # APM requires 10ms frames (480 samples at 48kHz)
+        self._apm_frame_size = sample_rate // 100
+
         logger.info(
             f"Initialized AudioInputHandler: {sample_rate}Hz, "
             f"{num_channels}ch, {samples_per_channel} samples/frame, "
-            f"device={device_index}"
+            f"device={device_index}, AEC={'enabled' if apm else 'disabled'}"
         )
 
     def start(self):
@@ -190,6 +197,36 @@ class AudioInputHandler:
             # LiveKit expects int16 with range [-32768, 32767]
             # Multiply by 32767 (not 32768) to avoid overflow at -1.0
             audio_data = (indata[:, 0] * 32767).astype(np.int16)
+
+            # Process through APM if enabled (echo cancellation, noise suppression, etc.)
+            if self._apm:
+                # APM requires 10ms frames, so split our 50ms frame into 5x 10ms chunks
+                processed_chunks = []
+                for i in range(0, len(audio_data), self._apm_frame_size):
+                    chunk = audio_data[i:i + self._apm_frame_size]
+
+                    # Only process if we have a complete 10ms frame
+                    if len(chunk) == self._apm_frame_size:
+                        # Create AudioFrame for APM processing
+                        apm_frame = rtc.AudioFrame(
+                            data=chunk.tobytes(),
+                            sample_rate=self.sample_rate,
+                            num_channels=self.num_channels,
+                            samples_per_channel=len(chunk)
+                        )
+
+                        # Process the frame (modifies in-place)
+                        self._apm.process_stream(apm_frame)
+
+                        # Convert back to numpy array
+                        processed_chunk = np.frombuffer(apm_frame.data, dtype=np.int16)
+                        processed_chunks.append(processed_chunk)
+                    else:
+                        # Partial frame at end, keep as-is
+                        processed_chunks.append(chunk)
+
+                # Reassemble processed audio
+                audio_data = np.concatenate(processed_chunks)
 
             # Notify visualization callback if provided (e.g., for TUI)
             # This runs in OS audio thread, so callback must be thread-safe

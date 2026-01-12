@@ -100,7 +100,9 @@ class TestConnection:
             mixer=mock_mixer,
             sample_rate=48000,
             num_channels=1,
-            no_playback=False
+            no_playback=False,
+            on_transcription=None,
+            on_audio_data=None
         )
 
         # Verify network manager methods called
@@ -568,6 +570,347 @@ class TestContextManager:
 
         # Verify disconnected despite exception
         mock_network_manager.disconnect.assert_called()
+
+
+class TestAudioProcessingModule:
+    """Test AudioProcessingModule (APM) creation and passing."""
+
+    @pytest.mark.asyncio
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioProcessingModule')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioMixer')
+    @patch('src.alto_terminal.audio_client_orchestrator.LiveKitNetworkManager')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioInputHandler')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioOutputHandler')
+    async def test_creates_apm_when_aec_enabled(
+        self,
+        mock_output_handler_class,
+        mock_input_handler_class,
+        mock_network_manager_class,
+        mock_mixer_class,
+        mock_apm_class
+    ):
+        """Test that APM is created when AEC is enabled."""
+        # Setup mocks
+        mock_apm = Mock()
+        mock_apm_class.return_value = mock_apm
+
+        mock_mixer = Mock()
+        mock_mixer_class.return_value = mock_mixer
+
+        mock_network_manager = AsyncMock()
+        mock_network_manager.audio_source = Mock()
+        mock_network_manager_class.return_value = mock_network_manager
+
+        mock_input_handler = Mock()
+        mock_input_handler_class.return_value = mock_input_handler
+
+        mock_output_handler = Mock()
+        mock_output_handler_class.return_value = mock_output_handler
+
+        # Create config with AEC enabled
+        config = AudioConfig(enable_aec=True)
+
+        orchestrator = AudioClientOrchestrator(
+            url="wss://test.com",
+            token="test-token",
+            config=config
+        )
+
+        await orchestrator.connect()
+
+        # Verify APM was created
+        mock_apm_class.assert_called_once_with(
+            echo_cancellation=True,
+            noise_suppression=False,
+            high_pass_filter=False,
+            auto_gain_control=False
+        )
+
+        # Verify APM is stored
+        assert orchestrator.apm is mock_apm
+
+    @pytest.mark.asyncio
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioProcessingModule')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioMixer')
+    @patch('src.alto_terminal.audio_client_orchestrator.LiveKitNetworkManager')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioInputHandler')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioOutputHandler')
+    async def test_creates_apm_with_all_features_enabled(
+        self,
+        mock_output_handler_class,
+        mock_input_handler_class,
+        mock_network_manager_class,
+        mock_mixer_class,
+        mock_apm_class
+    ):
+        """Test APM creation with all audio processing features."""
+        mock_apm = Mock()
+        mock_apm_class.return_value = mock_apm
+
+        mock_mixer = Mock()
+        mock_mixer_class.return_value = mock_mixer
+
+        mock_network_manager = AsyncMock()
+        mock_network_manager.audio_source = Mock()
+        mock_network_manager_class.return_value = mock_network_manager
+
+        mock_input_handler = Mock()
+        mock_input_handler_class.return_value = mock_input_handler
+
+        mock_output_handler = Mock()
+        mock_output_handler_class.return_value = mock_output_handler
+
+        # Enable all audio processing features
+        config = AudioConfig(
+            enable_aec=True,
+            noise_suppression=True,
+            high_pass_filter=True,
+            auto_gain_control=True
+        )
+
+        orchestrator = AudioClientOrchestrator(
+            url="wss://test.com",
+            token="test-token",
+            config=config
+        )
+
+        await orchestrator.connect()
+
+        # Verify APM was created with all features
+        mock_apm_class.assert_called_once_with(
+            echo_cancellation=True,
+            noise_suppression=True,
+            high_pass_filter=True,
+            auto_gain_control=True
+        )
+
+    @pytest.mark.asyncio
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioMixer')
+    @patch('src.alto_terminal.audio_client_orchestrator.LiveKitNetworkManager')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioInputHandler')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioOutputHandler')
+    async def test_does_not_create_apm_when_disabled(
+        self,
+        mock_output_handler_class,
+        mock_input_handler_class,
+        mock_network_manager_class,
+        mock_mixer_class
+    ):
+        """Test that APM is NOT created when all features are disabled."""
+        mock_mixer = Mock()
+        mock_mixer_class.return_value = mock_mixer
+
+        mock_network_manager = AsyncMock()
+        mock_network_manager.audio_source = Mock()
+        mock_network_manager_class.return_value = mock_network_manager
+
+        mock_input_handler = Mock()
+        mock_input_handler_class.return_value = mock_input_handler
+
+        mock_output_handler = Mock()
+        mock_output_handler_class.return_value = mock_output_handler
+
+        # All audio processing disabled (default)
+        config = AudioConfig()
+
+        orchestrator = AudioClientOrchestrator(
+            url="wss://test.com",
+            token="test-token",
+            config=config
+        )
+
+        await orchestrator.connect()
+
+        # Verify APM is None
+        assert orchestrator.apm is None
+
+    @pytest.mark.asyncio
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioProcessingModule')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioMixer')
+    @patch('src.alto_terminal.audio_client_orchestrator.LiveKitNetworkManager')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioInputHandler')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioOutputHandler')
+    async def test_passes_apm_to_input_handler(
+        self,
+        mock_output_handler_class,
+        mock_input_handler_class,
+        mock_network_manager_class,
+        mock_mixer_class,
+        mock_apm_class
+    ):
+        """Test that APM is passed to AudioInputHandler."""
+        mock_apm = Mock()
+        mock_apm_class.return_value = mock_apm
+
+        mock_mixer = Mock()
+        mock_mixer_class.return_value = mock_mixer
+
+        mock_network_manager = AsyncMock()
+        mock_network_manager.audio_source = Mock()
+        mock_network_manager_class.return_value = mock_network_manager
+
+        mock_input_handler = Mock()
+        mock_input_handler_class.return_value = mock_input_handler
+
+        mock_output_handler = Mock()
+        mock_output_handler_class.return_value = mock_output_handler
+
+        config = AudioConfig(enable_aec=True)
+
+        orchestrator = AudioClientOrchestrator(
+            url="wss://test.com",
+            token="test-token",
+            config=config
+        )
+
+        await orchestrator.connect()
+
+        # Verify APM was passed to input handler
+        input_handler_call_kwargs = mock_input_handler_class.call_args[1]
+        assert input_handler_call_kwargs['apm'] is mock_apm
+
+    @pytest.mark.asyncio
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioProcessingModule')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioMixer')
+    @patch('src.alto_terminal.audio_client_orchestrator.LiveKitNetworkManager')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioInputHandler')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioOutputHandler')
+    async def test_passes_apm_to_output_handler(
+        self,
+        mock_output_handler_class,
+        mock_input_handler_class,
+        mock_network_manager_class,
+        mock_mixer_class,
+        mock_apm_class
+    ):
+        """Test that APM is passed to AudioOutputHandler."""
+        mock_apm = Mock()
+        mock_apm_class.return_value = mock_apm
+
+        mock_mixer = Mock()
+        mock_mixer_class.return_value = mock_mixer
+
+        mock_network_manager = AsyncMock()
+        mock_network_manager.audio_source = Mock()
+        mock_network_manager_class.return_value = mock_network_manager
+
+        mock_input_handler = Mock()
+        mock_input_handler_class.return_value = mock_input_handler
+
+        mock_output_handler = Mock()
+        mock_output_handler_class.return_value = mock_output_handler
+
+        config = AudioConfig(enable_aec=True)
+
+        orchestrator = AudioClientOrchestrator(
+            url="wss://test.com",
+            token="test-token",
+            config=config
+        )
+
+        await orchestrator.connect()
+
+        # Verify APM was passed to output handler
+        output_handler_call_kwargs = mock_output_handler_class.call_args[1]
+        assert output_handler_call_kwargs['apm'] is mock_apm
+
+    @pytest.mark.asyncio
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioProcessingModule')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioMixer')
+    @patch('src.alto_terminal.audio_client_orchestrator.LiveKitNetworkManager')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioInputHandler')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioOutputHandler')
+    async def test_same_apm_instance_shared_between_handlers(
+        self,
+        mock_output_handler_class,
+        mock_input_handler_class,
+        mock_network_manager_class,
+        mock_mixer_class,
+        mock_apm_class
+    ):
+        """Test that the SAME APM instance is shared between input and output handlers."""
+        mock_apm = Mock()
+        mock_apm_class.return_value = mock_apm
+
+        mock_mixer = Mock()
+        mock_mixer_class.return_value = mock_mixer
+
+        mock_network_manager = AsyncMock()
+        mock_network_manager.audio_source = Mock()
+        mock_network_manager_class.return_value = mock_network_manager
+
+        mock_input_handler = Mock()
+        mock_input_handler_class.return_value = mock_input_handler
+
+        mock_output_handler = Mock()
+        mock_output_handler_class.return_value = mock_output_handler
+
+        config = AudioConfig(enable_aec=True)
+
+        orchestrator = AudioClientOrchestrator(
+            url="wss://test.com",
+            token="test-token",
+            config=config
+        )
+
+        await orchestrator.connect()
+
+        # Get APM passed to both handlers
+        input_apm = mock_input_handler_class.call_args[1]['apm']
+        output_apm = mock_output_handler_class.call_args[1]['apm']
+
+        # Verify they are the SAME instance (critical for AEC to work)
+        assert input_apm is output_apm
+        assert input_apm is mock_apm
+
+    @pytest.mark.asyncio
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioProcessingModule')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioMixer')
+    @patch('src.alto_terminal.audio_client_orchestrator.LiveKitNetworkManager')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioInputHandler')
+    @patch('src.alto_terminal.audio_client_orchestrator.AudioOutputHandler')
+    async def test_creates_apm_with_noise_suppression_only(
+        self,
+        mock_output_handler_class,
+        mock_input_handler_class,
+        mock_network_manager_class,
+        mock_mixer_class,
+        mock_apm_class
+    ):
+        """Test APM creation with only noise suppression enabled."""
+        mock_apm = Mock()
+        mock_apm_class.return_value = mock_apm
+
+        mock_mixer = Mock()
+        mock_mixer_class.return_value = mock_mixer
+
+        mock_network_manager = AsyncMock()
+        mock_network_manager.audio_source = Mock()
+        mock_network_manager_class.return_value = mock_network_manager
+
+        mock_input_handler = Mock()
+        mock_input_handler_class.return_value = mock_input_handler
+
+        mock_output_handler = Mock()
+        mock_output_handler_class.return_value = mock_output_handler
+
+        config = AudioConfig(noise_suppression=True)
+
+        orchestrator = AudioClientOrchestrator(
+            url="wss://test.com",
+            token="test-token",
+            config=config
+        )
+
+        await orchestrator.connect()
+
+        # Verify APM was created with only noise suppression
+        mock_apm_class.assert_called_once_with(
+            echo_cancellation=False,
+            noise_suppression=True,
+            high_pass_filter=False,
+            auto_gain_control=False
+        )
 
 
 if __name__ == "__main__":
