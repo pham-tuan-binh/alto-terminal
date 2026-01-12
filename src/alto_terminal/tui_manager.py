@@ -137,9 +137,9 @@ class TUIManager:
                 for timestamp, speaker, message in self._transcripts:
                     # Color code by speaker
                     if speaker.lower() in ["user", "you"]:
-                        speaker_color = "cyan"
+                        speaker_color = "orange1"
                     else:
-                        speaker_color = "green"
+                        speaker_color = "orange3"
 
                     line = Text()
                     line.append(f"[{timestamp}] ", style="dim")
@@ -150,7 +150,7 @@ class TUIManager:
                 content = Text("\n").join(lines)
 
         return Panel(
-            content, title="[bold]Conversation", border_style="blue", padding=(1, 2)
+            content, title="[bold]Conversation", border_style="orange3", padding=(1, 2)
         )
 
     def _render_audio_bar(self, levels: List[float], max_width: int = 40) -> str:
@@ -254,7 +254,10 @@ class TUIManager:
             content.append(part)
 
         return Panel(
-            content, title="[bold cyan]User Audio", border_style="cyan", padding=(1, 1)
+            content,
+            title="[bold orange1]User Audio",
+            border_style="orange1",
+            padding=(1, 1),
         )
 
     def _render_agent_audio_panel(self) -> Panel:
@@ -309,8 +312,8 @@ class TUIManager:
 
         return Panel(
             content,
-            title="[bold green]Agent Audio",
-            border_style="green",
+            title="[bold orange3]Agent Audio",
+            border_style="orange3",
             padding=(1, 1),
         )
 
