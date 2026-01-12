@@ -109,12 +109,12 @@ class AudioOutputHandler:
 
             self._pedalboard_filter = pedalboard.Pedalboard(
                 [
-                    pedalboard.HighpassFilter(cutoff_frequency_hz=400),
-                    pedalboard.LowpassFilter(cutoff_frequency_hz=3000),
-                    pedalboard.Distortion(drive_db=15),
-                    pedalboard.Clipping(threshold_db=-10),
-                    pedalboard.Gain(gain_db=5),
-                ]
+                    pedalboard.Bitcrush(bit_depth=4.0),
+                    pedalboard.Distortion(drive_db=10),
+                    pedalboard.HighpassFilter(cutoff_frequency_hz=500),
+                    pedalboard.LowpassFilter(cutoff_frequency_hz=2000),
+                    pedalboard.LadderFilter(cutoff_hz=1500, resonance=0.6)
+                    ]
             )
             logger.info("Initialized audio output filter (pedalboard)")
 
@@ -240,10 +240,26 @@ class AudioOutputHandler:
             if self._pedalboard_filter:
                 # Convert int16 to float32 for pedalboard (range -1.0 to 1.0)
                 float_audio = audio_data.astype(np.float32) / 32767.0
-                # Apply filter (reset=False is vital for continuous streams)
-                processed_audio = self._pedalboard_filter(
-                    float_audio, self.sample_rate, reset=False
+
+                # Step A: Add White Noise (Static)
+                # 0.05 is the intensity; increase for more "shhh"
+                static_noise = np.random.normal(0, 0.01, float_audio.shape).astype(
+                    np.float32
                 )
+                float_audio_with_static = float_audio + static_noise
+
+                # Step B: Add "Interference" Tone
+                # Adds a subtle high-pitched beep common in old radios
+                chunk_duration = frames / self.sample_rate
+                t = np.linspace(0, chunk_duration, len(float_audio), endpoint=False)
+                beep = 0.005 * np.sin(2 * np.pi * 1000 * t)  # 1kHz tone
+                float_audio_with_static += beep.astype(np.float32)
+
+                # Step C: Process through Pedalboard
+                processed_audio = self._pedalboard_filter(
+                    float_audio_with_static, self.sample_rate, reset=False
+                )
+
                 # Convert back to int16
                 audio_data = (processed_audio * 32767.0).astype(np.int16)
 

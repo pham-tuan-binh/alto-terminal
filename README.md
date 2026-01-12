@@ -98,7 +98,7 @@ uv run python main.py --enable-aec --noise-suppression
  - `--noise-suppression`: Reduces background noise (traffic, music, etc.)
  - `--high-pass-filter`: Removes low-frequency rumble
  - `--auto-gain-control`: Automatically adjusts microphone gain for consistent volume
- - `--use-audio-out-filter`: Apply radio-style audio filter to output (bandpass + distortion)
+ - `--use-audio-out-filter`: Apply radio-style audio filter to output (bitcrush, distortion, static noise, interference tone)
 
 ### Terminal UI Mode
 

@@ -37,7 +37,7 @@ async def entrypoint(ctx: JobContext):
         # tts=cartesia.TTS(model="sonic-3", voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"),
         stt=inference.STT("assemblyai/universal-streaming"),
         llm=inference.LLM("openai/gpt-4.1-mini"),
-        tts=inference.TTS("cartesia/sonic-3", voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"),
+        tts=inference.TTS("cartesia/sonic-3", voice="a5136bf9-224c-4d76-b823-52bd5efcffcc"),
     )
 
     agent = Agent(
