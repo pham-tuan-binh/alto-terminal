@@ -13,70 +13,70 @@ This project uses `uv` for all Python operations:
 
 ```bash
 # Install dependencies
-uv pip install -e .
-
-# Install with test dependencies
-uv pip install -e ".[test]"
-
-# Run the application
-uv run python main.py --room-name my-room --identity alice
+uv sync
 
 # Add new packages
 uv add <package>
+
+# Add test dependencies
+uv add --dev pytest pytest-cov
+
+# Run the application
+uv run python main.py --room-name my-room --identity alice
 ```
 
 ### Running the Application
 
 ```bash
 # List available audio devices
-python main.py --list-devices
+uv run python main.py --list-devices
 
 # Basic usage with environment variables
 export LIVEKIT_URL="wss://your-server.com"
 export LIVEKIT_API_KEY="your-key"
 export LIVEKIT_API_SECRET="your-secret"
-python main.py --room-name test-room --identity alice
+uv run python main.py --room-name test-room --identity alice
 
 # With echo cancellation and noise suppression
-python main.py --room-name test --identity alice --enable-aec --noise-suppression
+uv run python main.py --room-name test --identity alice --enable-aec --noise-suppression
 
 # With TUI visualization
-python main.py --room-name test --identity alice --tui
+uv run python main.py --room-name test --identity alice --tui
 
 # Verbose logging
-python main.py --room-name test --identity alice -v
+uv run python main.py --room-name test --identity alice -v
 ```
 
 ### Testing
 
 ```bash
 # Run all tests
-pytest
+uv run pytest
 
 # Run with coverage
-pytest --cov=src/alto_terminal --cov-report=html
+uv run pytest --cov=src/alto_terminal --cov-report=html
 
 # Run specific test file
-pytest tests/unit/test_audio_mixer.py
+uv run pytest tests/unit/test_audio_mixer.py
 
 # Run specific test
-pytest tests/unit/test_audio_mixer.py::TestAudioMixer::test_mix_multiple_streams
+uv run pytest tests/unit/test_audio_mixer.py::TestAudioMixer::test_mix_multiple_streams
 
 # Run integration tests only
-pytest tests/integration/
+uv run pytest tests/integration/
 
 # Run unit tests only
-pytest tests/unit/
+uv run pytest tests/unit/
 ```
 
 ### Code Quality
 
 ```bash
 # Syntax check all Python files
-python -m py_compile src/alto_terminal/*.py
+uv run python -m py_compile src/alto_terminal/*.py
 
 # Type checking (if using mypy)
-mypy src/alto_terminal/
+uv run mypy src/alto_terminal/
 ```
 
 ## Architecture

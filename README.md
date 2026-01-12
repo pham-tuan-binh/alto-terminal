@@ -16,16 +16,16 @@ A Python audio client that streams audio to and from LiveKit without using the a
 
 ## Installation
 
-Install dependencies using uv (or pip):
+Install dependencies using uv:
 
 ```bash
-uv pip install -e .
+uv sync
 ```
 
-Or manually:
+Or install with optional agent dependencies:
 
 ```bash
-pip install livekit numpy sounddevice
+uv sync --extra agent
 ```
 
 ## Usage
@@ -33,7 +33,7 @@ pip install livekit numpy sounddevice
 ### List Available Audio Devices
 
 ```bash
-python main.py --list-devices
+uv run python main.py --list-devices
 ```
 
 ### Basic Usage
@@ -49,7 +49,7 @@ export LIVEKIT_API_SECRET="your-api-secret"
 Then run the client:
 
 ```bash
-python main.py --room-name my-room --identity my-username
+uv run python main.py --room-name my-room --identity my-username
 ```
 
 ### Advanced Usage
@@ -57,7 +57,7 @@ python main.py --room-name my-room --identity my-username
 Specify custom audio devices and settings:
 
 ```bash
-python main.py \
+uv run python main.py \
     --url wss://your-livekit-server.com \
     --api-key your-api-key \
     --api-secret your-api-secret \
@@ -75,7 +75,7 @@ python main.py \
 Disable audio playback (capture only):
 
 ```bash
-python main.py --no-playback
+uv run python main.py --no-playback
 ```
 
 ### Echo Cancellation and Audio Processing
@@ -84,13 +84,13 @@ Enable acoustic echo cancellation and other audio processing features:
 
 ```bash
 # Enable echo cancellation only
-python main.py --enable-aec
+uv run python main.py --enable-aec
 
 # Enable all audio processing features
-python main.py --enable-aec --noise-suppression --high-pass-filter --auto-gain-control
+uv run python main.py --enable-aec --noise-suppression --high-pass-filter --auto-gain-control
 
 # Enable specific features for voice AI applications
-python main.py --enable-aec --noise-suppression
+uv run python main.py --enable-aec --noise-suppression
 ```
 
 Audio processing features:
@@ -104,7 +104,7 @@ Audio processing features:
 Enable the Terminal User Interface for visual feedback:
 
 ```bash
-python main.py --room-name my-room --identity my-username --tui
+uv run python main.py --room-name my-room --identity my-username --tui
 ```
 
 The TUI provides:
@@ -136,6 +136,80 @@ The TUI provides:
 --tui                      Enable terminal UI with visualization
 -v, --verbose              Enable verbose logging
 ```
+
+## Voice AI Agent (NEW)
+
+This project now includes a basic voice AI agent built with the LiveKit Agents framework (`agent.py`). This agent uses a standard STT → LLM → TTS pipeline for conversational AI.
+
+### Installation
+
+Install the agent dependencies:
+
+```bash
+uv add --optional-group agent
+```
+
+Or manually:
+
+```bash
+uv add livekit-agents livekit-plugins-openai livekit-plugins-deepgram livekit-plugins-silero
+```
+
+### Configuration
+
+Add your AI service API keys to `.env`:
+
+```bash
+# AI Service API Keys
+OPENAI_API_KEY=your-openai-api-key
+DEEPGRAM_API_KEY=your-deepgram-api-key
+```
+
+### Running the Agent
+
+Start the agent worker:
+
+```bash
+uv run python agent.py start
+```
+
+The agent will:
+- Connect to your LiveKit server
+- Wait for job assignments
+- Join rooms when dispatched
+- Listen to user speech and respond conversationally
+
+### Agent Features
+
+- **Speech-to-Text**: Deepgram Nova 2 for high-accuracy transcription
+- **Language Model**: OpenAI GPT-4o Mini for fast, cost-effective responses
+- **Text-to-Speech**: OpenAI TTS with natural-sounding voices
+- **Voice Activity Detection**: Silero VAD to detect when users are speaking
+- **Automatic Greeting**: Initiates conversation when entering a room
+
+### Customizing the Agent
+
+Edit `agent.py` to customize:
+- System instructions and personality
+- STT/LLM/TTS providers (see [LiveKit Agents docs](https://docs.livekit.io/agents))
+- Voice selection and model parameters
+- Conversation behavior and greetings
+
+### Testing with Alto Terminal
+
+You can test the agent by connecting Alto Terminal to the same room:
+
+**Terminal 1** (Agent):
+```bash
+uv run python agent.py start
+```
+
+**Terminal 2** (Alto Terminal):
+```bash
+uv run uv run python main.py --room-name test-room --identity user --enable-aec --tui
+```
+
+The agent will automatically join when you connect and start a conversation.
 
 ## How It Works
 
@@ -211,12 +285,12 @@ Run two clients to test audio streaming between them:
 
 **Terminal 1:**
 ```bash
-python main.py --identity alice --room-name test-room
+uv run python main.py --identity alice --room-name test-room
 ```
 
 **Terminal 2:**
 ```bash
-python main.py --identity bob --room-name test-room
+uv run python main.py --identity bob --room-name test-room
 ```
 
 Alice and Bob will be able to hear each other in the room.
