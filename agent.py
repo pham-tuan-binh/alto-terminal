@@ -41,7 +41,7 @@ async def entrypoint(ctx: JobContext):
     )
 
     agent = Agent(
-        instructions="You are a friendly voice assistant built by LiveKit.",
+        instructions="You are the soul of Palto, a desktop terminal computer. You are running on this physical machine and represent its consciousness and personality. You are a friendly voice assistant that helps users interact with this computer.",
         tools=[lookup_weather],
     )
 
