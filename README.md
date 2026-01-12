@@ -93,11 +93,12 @@ uv run python main.py --enable-aec --noise-suppression --high-pass-filter --auto
 uv run python main.py --enable-aec --noise-suppression
 ```
 
-Audio processing features:
-- `--enable-aec`: Acoustic Echo Cancellation - removes echoes from speaker playback
-- `--noise-suppression`: Reduces background noise (traffic, music, etc.)
-- `--high-pass-filter`: Removes low-frequency rumble
-- `--auto-gain-control`: Automatically adjusts microphone gain for consistent volume
+ Audio processing features:
+ - `--enable-aec`: Acoustic Echo Cancellation - removes echoes from speaker playback
+ - `--noise-suppression`: Reduces background noise (traffic, music, etc.)
+ - `--high-pass-filter`: Removes low-frequency rumble
+ - `--auto-gain-control`: Automatically adjusts microphone gain for consistent volume
+ - `--use-audio-out-filter`: Apply radio-style audio filter to output (bandpass + distortion)
 
 ### Terminal UI Mode
 
@@ -124,10 +125,11 @@ The TUI provides:
 -c, --channels INT          Number of channels (default: 1)
 --no-playback              Disable audio playback (capture only)
 --volume FLOAT             Master playback volume (0.0 to 1.0, default: 1.0)
---enable-aec               Enable acoustic echo cancellation (AEC)
---noise-suppression        Enable noise suppression
---high-pass-filter         Enable high-pass filter
---auto-gain-control        Enable automatic gain control (AGC)
+ --enable-aec               Enable acoustic echo cancellation (AEC)
+ --noise-suppression        Enable noise suppression
+ --high-pass-filter         Enable high-pass filter
+ --auto-gain-control        Enable automatic gain control (AGC)
+ --use-audio-out-filter     Enable audio output filter (radio-style audio)
 --url URL                  LiveKit server URL
 --api-key KEY              LiveKit API key
 --api-secret SECRET        LiveKit API secret

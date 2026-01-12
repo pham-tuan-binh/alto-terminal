@@ -44,114 +44,112 @@ async def main():
 
     # Device management
     parser.add_argument(
-        "-l", "--list-devices",
+        "-l",
+        "--list-devices",
         action="store_true",
-        help="List available audio devices and exit"
+        help="List available audio devices and exit",
     )
     parser.add_argument(
-        "-i", "--input-device",
+        "-i",
+        "--input-device",
         type=int,
-        help="Audio input device index (see --list-devices)"
+        help="Audio input device index (see --list-devices)",
     )
     parser.add_argument(
-        "-o", "--output-device",
+        "-o",
+        "--output-device",
         type=int,
-        help="Audio output device index (see --list-devices)"
+        help="Audio output device index (see --list-devices)",
     )
 
     # Audio configuration
     parser.add_argument(
-        "-s", "--sample-rate",
+        "-s",
+        "--sample-rate",
         type=int,
         default=48000,
-        help="Sample rate in Hz (default: 48000)"
+        help="Sample rate in Hz (default: 48000)",
     )
     parser.add_argument(
-        "-c", "--channels",
-        type=int,
-        default=1,
-        help="Number of channels (default: 1)"
+        "-c", "--channels", type=int, default=1, help="Number of channels (default: 1)"
     )
     parser.add_argument(
         "--no-playback",
         action="store_true",
-        help="Disable audio playback (capture only)"
+        help="Disable audio playback (capture only)",
     )
     parser.add_argument(
         "--volume",
         type=float,
         default=1.0,
-        help="Master playback volume (0.0 to 1.0, default: 1.0)"
+        help="Master playback volume (0.0 to 1.0, default: 1.0)",
     )
 
     # Audio processing features
     parser.add_argument(
         "--enable-aec",
         action="store_true",
-        help="Enable acoustic echo cancellation (AEC)"
+        help="Enable acoustic echo cancellation (AEC)",
     )
     parser.add_argument(
-        "--noise-suppression",
-        action="store_true",
-        help="Enable noise suppression"
+        "--noise-suppression", action="store_true", help="Enable noise suppression"
     )
     parser.add_argument(
-        "--high-pass-filter",
-        action="store_true",
-        help="Enable high-pass filter"
+        "--high-pass-filter", action="store_true", help="Enable high-pass filter"
     )
     parser.add_argument(
         "--auto-gain-control",
         action="store_true",
-        help="Enable automatic gain control (AGC)"
+        help="Enable automatic gain control (AGC)",
+    )
+    parser.add_argument(
+        "--use-audio-out-filter",
+        action="store_true",
+        help="Enable audio output filter (radio-style audio)",
     )
 
     # LiveKit connection
+    parser.add_argument("--url", help="LiveKit server URL (or set LIVEKIT_URL env var)")
     parser.add_argument(
-        "--url",
-        help="LiveKit server URL (or set LIVEKIT_URL env var)"
+        "--api-key", help="LiveKit API key (or set LIVEKIT_API_KEY env var)"
     )
     parser.add_argument(
-        "--api-key",
-        help="LiveKit API key (or set LIVEKIT_API_KEY env var)"
-    )
-    parser.add_argument(
-        "--api-secret",
-        help="LiveKit API secret (or set LIVEKIT_API_SECRET env var)"
+        "--api-secret", help="LiveKit API secret (or set LIVEKIT_API_SECRET env var)"
     )
     parser.add_argument(
         "--room-name",
         default="audio-room",
-        help="LiveKit room name to join (default: audio-room)"
+        help="LiveKit room name to join (default: audio-room)",
     )
     parser.add_argument(
         "--identity",
         default="python-audio-streamer",
-        help="Participant identity (default: python-audio-streamer)"
+        help="Participant identity (default: python-audio-streamer)",
     )
 
     # Logging
     parser.add_argument(
-        "-v", "--verbose",
-        action="store_true",
-        help="Enable verbose logging"
+        "-v", "--verbose", action="store_true", help="Enable verbose logging"
     )
 
     # TUI visualization
     parser.add_argument(
         "--tui",
         action="store_true",
-        help="Enable terminal UI with conversation and audio visualization"
+        help="Enable terminal UI with conversation and audio visualization",
     )
 
     args = parser.parse_args()
 
     # Set up logging
     # When TUI is enabled, reduce logging to WARNING to avoid interfering with display
-    log_level = logging.WARNING if args.tui else (logging.DEBUG if args.verbose else logging.INFO)
+    log_level = (
+        logging.WARNING
+        if args.tui
+        else (logging.DEBUG if args.verbose else logging.INFO)
+    )
     logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
     # List devices if requested
@@ -201,15 +199,13 @@ async def main():
         enable_aec=args.enable_aec,
         noise_suppression=args.noise_suppression,
         high_pass_filter=args.high_pass_filter,
-        auto_gain_control=args.auto_gain_control
+        auto_gain_control=args.auto_gain_control,
+        use_audio_out_filter=args.use_audio_out_filter,
     )
 
     # Create orchestrator
     orchestrator = AudioClientOrchestrator(
-        url=url,
-        token=token,
-        config=config,
-        enable_tui=args.tui
+        url=url, token=token, config=config, enable_tui=args.tui
     )
 
     try:

@@ -213,6 +213,7 @@ class AudioClientOrchestrator:
                     samples_per_channel=self.config.samples_per_channel,
                     device_index=self.config.output_device,
                     apm=self.apm,
+                    use_audio_out_filter=self.config.use_audio_out_filter,
                 )
                 logger.debug("Created AudioOutputHandler")
 

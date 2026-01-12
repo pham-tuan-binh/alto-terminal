@@ -32,6 +32,7 @@ class OutputMetrics:
         errors: Total number of errors encountered
         last_error: Description of the most recent error
     """
+
     frames_played: int = 0
     underruns: int = 0
     errors: int = 0
@@ -70,7 +71,8 @@ class AudioOutputHandler:
         num_channels: int,
         samples_per_channel: int,
         device_index: Optional[int] = None,
-        apm: Optional[AudioProcessingModule] = None
+        apm: Optional[AudioProcessingModule] = None,
+        use_audio_out_filter: bool = False,
     ):
         """Initialize audio output handler.
 
@@ -81,6 +83,7 @@ class AudioOutputHandler:
             samples_per_channel: Number of samples per audio frame (e.g., 2400 for 50ms)
             device_index: Optional device index (None = default device)
             apm: Optional AudioProcessingModule for reverse stream processing (echo cancellation)
+            use_audio_out_filter: Enable audio output filter using pedalboard
         """
         self.mixer = mixer
         self.sample_rate = sample_rate
@@ -88,6 +91,7 @@ class AudioOutputHandler:
         self.samples_per_channel = samples_per_channel
         self.device_index = device_index
         self._apm = apm
+        self._use_audio_out_filter = use_audio_out_filter
 
         # Output stream (created when started)
         self._output_stream: Optional[sd.OutputStream] = None
@@ -98,10 +102,27 @@ class AudioOutputHandler:
         # APM requires 10ms frames (480 samples at 48kHz)
         self._apm_frame_size = sample_rate // 100
 
+        # Initialize pedalboard filter if enabled
+        self._pedalboard_filter = None
+        if self._use_audio_out_filter:
+            import pedalboard
+
+            self._pedalboard_filter = pedalboard.Pedalboard(
+                [
+                    pedalboard.HighpassFilter(cutoff_frequency_hz=400),
+                    pedalboard.LowpassFilter(cutoff_frequency_hz=3000),
+                    pedalboard.Distortion(drive_db=15),
+                    pedalboard.Clipping(threshold_db=-10),
+                    pedalboard.Gain(gain_db=5),
+                ]
+            )
+            logger.info("Initialized audio output filter (pedalboard)")
+
         logger.info(
             f"Initialized AudioOutputHandler: {sample_rate}Hz, "
             f"{num_channels}ch, {samples_per_channel} samples/frame, "
-            f"device={device_index}, AEC={'enabled' if apm else 'disabled'}"
+            f"device={device_index}, AEC={'enabled' if apm else 'disabled'}, "
+            f"filter={'enabled' if self._use_audio_out_filter else 'disabled'}"
         )
 
     def start(self):
@@ -123,8 +144,8 @@ class AudioOutputHandler:
                 channels=self.num_channels,
                 samplerate=self.sample_rate,
                 blocksize=self.samples_per_channel,
-                dtype='float32',
-                callback=self._audio_callback
+                dtype="float32",
+                callback=self._audio_callback,
             )
 
             self._output_stream.start()
@@ -200,7 +221,7 @@ class AudioOutputHandler:
             if self._apm:
                 # APM requires 10ms frames, so split our 50ms frame into 5x 10ms chunks
                 for i in range(0, len(audio_data), self._apm_frame_size):
-                    chunk = audio_data[i:i + self._apm_frame_size]
+                    chunk = audio_data[i : i + self._apm_frame_size]
 
                     # Only process if we have a complete 10ms frame
                     if len(chunk) == self._apm_frame_size:
@@ -209,11 +230,22 @@ class AudioOutputHandler:
                             data=chunk.tobytes(),
                             sample_rate=self.sample_rate,
                             num_channels=self.num_channels,
-                            samples_per_channel=len(chunk)
+                            samples_per_channel=len(chunk),
                         )
 
                         # Process reverse stream (tells AEC what's being played)
                         self._apm.process_reverse_stream(apm_frame)
+
+            # Apply audio output filter if enabled
+            if self._pedalboard_filter:
+                # Convert int16 to float32 for pedalboard (range -1.0 to 1.0)
+                float_audio = audio_data.astype(np.float32) / 32767.0
+                # Apply filter (reset=False is vital for continuous streams)
+                processed_audio = self._pedalboard_filter(
+                    float_audio, self.sample_rate, reset=False
+                )
+                # Convert back to int16
+                audio_data = (processed_audio * 32767.0).astype(np.int16)
 
             # Convert int16 (range -32768 to 32767) → float32 (range -1.0 to 1.0)
             # Mixer uses int16 with range [-32768, 32767]
@@ -245,11 +277,11 @@ class AudioOutputHandler:
                 - is_active: Whether output stream is currently active
         """
         return {
-            'frames_played': self._metrics.frames_played,
-            'underruns': self._metrics.underruns,
-            'errors': self._metrics.errors,
-            'last_error': self._metrics.last_error,
-            'is_active': self._output_stream is not None and self._output_stream.active
+            "frames_played": self._metrics.frames_played,
+            "underruns": self._metrics.underruns,
+            "errors": self._metrics.errors,
+            "last_error": self._metrics.last_error,
+            "is_active": self._output_stream is not None and self._output_stream.active,
         }
 
     def __enter__(self):

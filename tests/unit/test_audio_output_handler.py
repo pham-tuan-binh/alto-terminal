@@ -29,7 +29,7 @@ class TestAudioOutputHandlerInitialization:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=5
+            device_index=5,
         )
 
         assert handler.mixer is mixer
@@ -46,16 +46,47 @@ class TestAudioOutputHandlerInitialization:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=None
+            device_index=None,
         )
 
         assert handler.device_index is None
+
+    def test_initialization_with_filter_disabled(self):
+        """Test handler initialization with filter disabled (default)."""
+        mixer = Mock()
+
+        handler = AudioOutputHandler(
+            mixer=mixer,
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None,
+            use_audio_out_filter=False,
+        )
+
+        assert handler._pedalboard_filter is None
+
+    def test_initialization_with_filter_enabled(self):
+        """Test handler initialization with filter enabled."""
+        mixer = Mock()
+
+        handler = AudioOutputHandler(
+            mixer=mixer,
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=2400,
+            device_index=None,
+            use_audio_out_filter=True,
+        )
+
+        assert handler._pedalboard_filter is not None
+        assert hasattr(handler._pedalboard_filter, "process")
 
 
 class TestAudioOutputLifecycle:
     """Test start/stop lifecycle."""
 
-    @patch('src.alto_terminal.audio_output_handler.sd.OutputStream')
+    @patch("src.alto_terminal.audio_output_handler.sd.OutputStream")
     def test_start(self, mock_output_stream_class):
         """Test starting audio output."""
         mock_stream = MagicMock()
@@ -66,7 +97,7 @@ class TestAudioOutputLifecycle:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=None
+            device_index=None,
         )
 
         handler.start()
@@ -77,8 +108,8 @@ class TestAudioOutputLifecycle:
             channels=1,
             samplerate=48000,
             blocksize=2400,
-            dtype='float32',
-            callback=handler._audio_callback
+            dtype="float32",
+            callback=handler._audio_callback,
         )
 
         # Verify stream was started
@@ -87,7 +118,7 @@ class TestAudioOutputLifecycle:
         # Verify stream is stored
         assert handler._output_stream is mock_stream
 
-    @patch('src.alto_terminal.audio_output_handler.sd.OutputStream')
+    @patch("src.alto_terminal.audio_output_handler.sd.OutputStream")
     def test_start_with_device_index(self, mock_output_stream_class):
         """Test starting with specific device index."""
         mock_stream = MagicMock()
@@ -98,16 +129,16 @@ class TestAudioOutputLifecycle:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=5
+            device_index=5,
         )
 
         handler.start()
 
         # Verify device parameter was passed
         call_kwargs = mock_output_stream_class.call_args[1]
-        assert call_kwargs['device'] == 5
+        assert call_kwargs["device"] == 5
 
-    @patch('src.alto_terminal.audio_output_handler.sd.OutputStream')
+    @patch("src.alto_terminal.audio_output_handler.sd.OutputStream")
     def test_start_already_started(self, mock_output_stream_class):
         """Test starting when already started (should warn)."""
         mock_stream = MagicMock()
@@ -118,7 +149,7 @@ class TestAudioOutputLifecycle:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=None
+            device_index=None,
         )
 
         handler.start()
@@ -127,7 +158,7 @@ class TestAudioOutputLifecycle:
         # Should only create stream once
         assert mock_output_stream_class.call_count == 1
 
-    @patch('src.alto_terminal.audio_output_handler.sd.OutputStream')
+    @patch("src.alto_terminal.audio_output_handler.sd.OutputStream")
     def test_start_error(self, mock_output_stream_class):
         """Test error during start."""
         mock_output_stream_class.side_effect = Exception("Device not found")
@@ -137,7 +168,7 @@ class TestAudioOutputLifecycle:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=None
+            device_index=None,
         )
 
         with pytest.raises(Exception, match="Device not found"):
@@ -145,10 +176,10 @@ class TestAudioOutputLifecycle:
 
         # Verify metrics tracked error
         metrics = handler.get_metrics()
-        assert metrics['errors'] == 1
-        assert "Device not found" in metrics['last_error']
+        assert metrics["errors"] == 1
+        assert "Device not found" in metrics["last_error"]
 
-    @patch('src.alto_terminal.audio_output_handler.sd.OutputStream')
+    @patch("src.alto_terminal.audio_output_handler.sd.OutputStream")
     def test_stop(self, mock_output_stream_class):
         """Test stopping audio output."""
         mock_stream = MagicMock()
@@ -159,7 +190,7 @@ class TestAudioOutputLifecycle:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=None
+            device_index=None,
         )
 
         handler.start()
@@ -179,13 +210,13 @@ class TestAudioOutputLifecycle:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=None
+            device_index=None,
         )
 
         # Should not raise error
         handler.stop()
 
-    @patch('src.alto_terminal.audio_output_handler.sd.OutputStream')
+    @patch("src.alto_terminal.audio_output_handler.sd.OutputStream")
     def test_stop_error(self, mock_output_stream_class):
         """Test error during stop."""
         mock_stream = MagicMock()
@@ -197,7 +228,7 @@ class TestAudioOutputLifecycle:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=None
+            device_index=None,
         )
 
         handler.start()
@@ -207,8 +238,8 @@ class TestAudioOutputLifecycle:
 
         # Verify metrics tracked error
         metrics = handler.get_metrics()
-        assert metrics['errors'] == 1
-        assert "Stop failed" in metrics['last_error']
+        assert metrics["errors"] == 1
+        assert "Stop failed" in metrics["last_error"]
 
 
 class TestAudioCallback:
@@ -225,7 +256,7 @@ class TestAudioCallback:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=100,
-            device_index=None
+            device_index=None,
         )
 
         # Create output buffer
@@ -254,7 +285,7 @@ class TestAudioCallback:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=5,
-            device_index=None
+            device_index=None,
         )
 
         outdata = np.zeros((5, 1), dtype=np.float32)
@@ -280,7 +311,7 @@ class TestAudioCallback:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=None
+            device_index=None,
         )
 
         outdata = np.zeros((2400, 1), dtype=np.float32)
@@ -300,7 +331,7 @@ class TestAudioCallback:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=100,
-            device_index=None
+            device_index=None,
         )
 
         outdata = np.zeros((100, 1), dtype=np.float32)
@@ -308,7 +339,7 @@ class TestAudioCallback:
 
         # Verify underrun was tracked
         metrics = handler.get_metrics()
-        assert metrics['underruns'] == 1
+        assert metrics["underruns"] == 1
 
     def test_audio_callback_with_status_error(self):
         """Test callback logs status errors."""
@@ -320,7 +351,7 @@ class TestAudioCallback:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=100,
-            device_index=None
+            device_index=None,
         )
 
         outdata = np.zeros((100, 1), dtype=np.float32)
@@ -330,8 +361,8 @@ class TestAudioCallback:
 
         # Verify error was tracked
         metrics = handler.get_metrics()
-        assert metrics['errors'] == 1
-        assert "Output underflow" in metrics['last_error']
+        assert metrics["errors"] == 1
+        assert "Output underflow" in metrics["last_error"]
 
     def test_audio_callback_handles_exception(self):
         """Test callback handles exceptions gracefully."""
@@ -343,7 +374,7 @@ class TestAudioCallback:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=100,
-            device_index=None
+            device_index=None,
         )
 
         outdata = np.zeros((100, 1), dtype=np.float32)
@@ -353,8 +384,8 @@ class TestAudioCallback:
 
         # Verify error was tracked
         metrics = handler.get_metrics()
-        assert metrics['errors'] == 1
-        assert "Mixer failed" in metrics['last_error']
+        assert metrics["errors"] == 1
+        assert "Mixer failed" in metrics["last_error"]
 
         # Verify output buffer filled with silence
         assert np.all(outdata == 0)
@@ -369,7 +400,7 @@ class TestAudioCallback:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=100,
-            device_index=None
+            device_index=None,
         )
 
         # Pre-fill buffer with non-zero values
@@ -379,6 +410,48 @@ class TestAudioCallback:
 
         # Verify buffer was filled with silence
         assert np.all(outdata == 0)
+
+    def test_audio_callback_with_filter_enabled(self):
+        """Test callback applies filter when enabled."""
+        mixer = Mock()
+        mixer.get_audio_data.return_value = np.full(100, 16383, dtype=np.int16)
+
+        handler = AudioOutputHandler(
+            mixer=mixer,
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=100,
+            device_index=None,
+            use_audio_out_filter=True,
+        )
+
+        outdata = np.zeros((100, 1), dtype=np.float32)
+        handler._audio_callback(outdata, 100, None, None)
+
+        # Verify filter was applied (output should be different from input)
+        # Input was 0.5, but filter should change the output
+        assert not np.allclose(outdata[:, 0], 16383 / 32767)
+
+    def test_audio_callback_with_filter_disabled(self):
+        """Test callback bypasses filter when disabled (default)."""
+        mixer = Mock()
+        mixer.get_audio_data.return_value = np.full(100, 16383, dtype=np.int16)
+
+        handler = AudioOutputHandler(
+            mixer=mixer,
+            sample_rate=48000,
+            num_channels=1,
+            samples_per_channel=100,
+            device_index=None,
+            use_audio_out_filter=False,
+        )
+
+        outdata = np.zeros((100, 1), dtype=np.float32)
+        handler._audio_callback(outdata, 100, None, None)
+
+        # Verify no filter applied (output should be direct conversion)
+        expected = np.full(100, 16383 / 32767, dtype=np.float32)
+        np.testing.assert_array_almost_equal(outdata[:, 0], expected, decimal=5)
 
 
 class TestMetrics:
@@ -391,17 +464,17 @@ class TestMetrics:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=None
+            device_index=None,
         )
 
         metrics = handler.get_metrics()
-        assert metrics['frames_played'] == 0
-        assert metrics['underruns'] == 0
-        assert metrics['errors'] == 0
-        assert metrics['last_error'] is None
-        assert metrics['is_active'] is False
+        assert metrics["frames_played"] == 0
+        assert metrics["underruns"] == 0
+        assert metrics["errors"] == 0
+        assert metrics["last_error"] is None
+        assert metrics["is_active"] is False
 
-    @patch('src.alto_terminal.audio_output_handler.sd.OutputStream')
+    @patch("src.alto_terminal.audio_output_handler.sd.OutputStream")
     def test_is_active_metric(self, mock_output_stream_class):
         """Test is_active metric reflects stream state."""
         mock_stream = MagicMock()
@@ -413,19 +486,19 @@ class TestMetrics:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=None
+            device_index=None,
         )
 
         # Before start
-        assert handler.get_metrics()['is_active'] is False
+        assert handler.get_metrics()["is_active"] is False
 
         # After start
         handler.start()
-        assert handler.get_metrics()['is_active'] is True
+        assert handler.get_metrics()["is_active"] is True
 
         # After stop
         handler.stop()
-        assert handler.get_metrics()['is_active'] is False
+        assert handler.get_metrics()["is_active"] is False
 
     def test_frames_played_metric(self):
         """Test frames_played metric increments."""
@@ -437,7 +510,7 @@ class TestMetrics:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=100,
-            device_index=None
+            device_index=None,
         )
 
         outdata = np.zeros((100, 1), dtype=np.float32)
@@ -447,7 +520,7 @@ class TestMetrics:
             handler._audio_callback(outdata, 100, None, None)
 
         metrics = handler.get_metrics()
-        assert metrics['frames_played'] == 5
+        assert metrics["frames_played"] == 5
 
     def test_underruns_metric(self):
         """Test underruns metric increments."""
@@ -460,7 +533,7 @@ class TestMetrics:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=100,
-            device_index=None
+            device_index=None,
         )
 
         outdata = np.zeros((100, 1), dtype=np.float32)
@@ -470,13 +543,13 @@ class TestMetrics:
             handler._audio_callback(outdata, 100, None, None)
 
         metrics = handler.get_metrics()
-        assert metrics['underruns'] == 3
+        assert metrics["underruns"] == 3
 
 
 class TestContextManager:
     """Test context manager usage."""
 
-    @patch('src.alto_terminal.audio_output_handler.sd.OutputStream')
+    @patch("src.alto_terminal.audio_output_handler.sd.OutputStream")
     def test_context_manager(self, mock_output_stream_class):
         """Test using handler as context manager."""
         mock_stream = MagicMock()
@@ -487,7 +560,7 @@ class TestContextManager:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=None
+            device_index=None,
         )
 
         # Use as context manager
@@ -499,7 +572,7 @@ class TestContextManager:
         mock_stream.stop.assert_called_once()
         mock_stream.close.assert_called_once()
 
-    @patch('src.alto_terminal.audio_output_handler.sd.OutputStream')
+    @patch("src.alto_terminal.audio_output_handler.sd.OutputStream")
     def test_context_manager_with_exception(self, mock_output_stream_class):
         """Test context manager stops stream even if exception occurs."""
         mock_stream = MagicMock()
@@ -510,7 +583,7 @@ class TestContextManager:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=None
+            device_index=None,
         )
 
         # Exception should not prevent cleanup
@@ -537,7 +610,7 @@ class TestAudioProcessingModule:
             num_channels=1,
             samples_per_channel=2400,
             device_index=None,
-            apm=mock_apm
+            apm=mock_apm,
         )
 
         assert handler._apm is mock_apm
@@ -550,7 +623,7 @@ class TestAudioProcessingModule:
             sample_rate=48000,
             num_channels=1,
             samples_per_channel=2400,
-            device_index=None
+            device_index=None,
         )
 
         assert handler._apm is None
@@ -570,7 +643,7 @@ class TestAudioProcessingModule:
             num_channels=1,
             samples_per_channel=2400,
             device_index=None,
-            apm=mock_apm
+            apm=mock_apm,
         )
 
         # Simulate audio callback
@@ -597,7 +670,7 @@ class TestAudioProcessingModule:
             num_channels=1,
             samples_per_channel=2400,
             device_index=None,
-            apm=None  # No APM
+            apm=None,  # No APM
         )
 
         outdata = np.zeros((2400, 1), dtype=np.float32)
@@ -624,7 +697,7 @@ class TestAudioProcessingModule:
             num_channels=1,
             samples_per_channel=2400,
             device_index=None,
-            apm=mock_apm
+            apm=mock_apm,
         )
 
         outdata = np.zeros((2400, 1), dtype=np.float32)
@@ -655,7 +728,7 @@ class TestAudioProcessingModule:
             num_channels=1,
             samples_per_channel=2300,  # Not divisible by 480
             device_index=None,
-            apm=mock_apm
+            apm=mock_apm,
         )
 
         outdata = np.zeros((2300, 1), dtype=np.float32)
@@ -682,7 +755,7 @@ class TestAudioProcessingModule:
             num_channels=1,
             samples_per_channel=2400,
             device_index=None,
-            apm=mock_apm
+            apm=mock_apm,
         )
 
         outdata = np.zeros((2400, 1), dtype=np.float32)
@@ -708,7 +781,7 @@ class TestAudioProcessingModule:
             num_channels=1,
             samples_per_channel=2400,
             device_index=None,
-            apm=mock_apm
+            apm=mock_apm,
         )
 
         outdata = np.zeros((2400, 1), dtype=np.float32)

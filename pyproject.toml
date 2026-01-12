@@ -12,6 +12,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "rich>=13.0.0",
     "livekit-agents[cartesia,deepgram,openai,silero,turn-detector]~=1.0",
+    "pedalboard>=0.9.19",
 ]
 
 [project.optional-dependencies]

@@ -34,6 +34,7 @@ class AudioConfig:
         noise_suppression: Enable noise suppression (default: False)
         high_pass_filter: Enable high-pass filter (default: False)
         auto_gain_control: Enable automatic gain control (default: False)
+        use_audio_out_filter: Enable audio output filter using pedalboard (default: False)
     """
 
     sample_rate: int = SAMPLE_RATE
@@ -47,6 +48,7 @@ class AudioConfig:
     noise_suppression: bool = False
     high_pass_filter: bool = False
     auto_gain_control: bool = False
+    use_audio_out_filter: bool = False
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -55,6 +57,8 @@ class AudioConfig:
         if self.num_channels not in (1, 2):
             raise ValueError(f"num_channels must be 1 or 2, got {self.num_channels}")
         if self.samples_per_channel <= 0:
-            raise ValueError(f"samples_per_channel must be positive, got {self.samples_per_channel}")
+            raise ValueError(
+                f"samples_per_channel must be positive, got {self.samples_per_channel}"
+            )
         if not 0.0 <= self.volume <= 1.0:
             raise ValueError(f"volume must be between 0.0 and 1.0, got {self.volume}")
